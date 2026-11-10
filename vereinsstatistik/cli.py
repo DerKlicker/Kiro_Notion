@@ -11,6 +11,7 @@ import argparse
 import json
 import sys
 
+from .analysis import analyze, load_data
 from .config import load_config
 from .fetch import fetch_all
 from .inspector import inspect
@@ -90,6 +91,32 @@ def cmd_fetch(args) -> int:
     return 0
 
 
+def cmd_analyze(args) -> int:
+    cfg = load_config()
+    try:
+        data = load_data(args.infile)
+    except (OSError, ValueError) as exc:
+        print(f"FEHLER: Daten konnten nicht geladen werden: {exc}", file=sys.stderr)
+        return 1
+
+    report = analyze(data, cfg)
+
+    gk = report["gesamtkennzahlen"]
+    print("Zusammenfassung:")
+    print(f"  Mitglieder gesamt:        {gk['anzahl_mitglieder_gesamt']}")
+    print(f"  davon aktiv:              {gk['anzahl_aktive_mitglieder']}")
+    print(f"  Gruppenstunden:           {gk['anzahl_gruppenstunden']}")
+    print(f"  Lager:                    {gk['anzahl_lager']}")
+    print(f"  Schnitt anwesend/Stunde:  {gk['schnitt_anwesend_pro_stunde']}")
+    print(f"  Gesamtbeteiligungsquote:  {gk['gesamtbeteiligungsquote']} %")
+
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            json.dump(report, fh, ensure_ascii=False, indent=2)
+        print(f"Report gespeichert nach {args.out}")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="vereinsstatistik")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -100,11 +127,16 @@ def main(argv=None) -> int:
     p_fetch = sub.add_parser("fetch", help="Daten abrufen")
     p_fetch.add_argument("--out", help="Pfad für JSON-Ausgabe", default=None)
 
+    p_analyze = sub.add_parser("analyze", help="Kennzahlen aus gespeichertem JSON berechnen")
+    p_analyze.add_argument("--in", dest="infile", required=True, help="Pfad zur Eingabe-JSON (aus fetch --out)")
+    p_analyze.add_argument("--out", help="Pfad für den Report als JSON", default=None)
+
     args = parser.parse_args(argv)
     return {
         "test-connection": cmd_test_connection,
         "inspect": cmd_inspect,
         "fetch": cmd_fetch,
+        "analyze": cmd_analyze,
     }[args.command](args)
 
 
