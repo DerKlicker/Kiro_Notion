@@ -3,6 +3,8 @@
 Beispiele:
     python -m vereinsstatistik.cli inspect
     python -m vereinsstatistik.cli fetch --out data.json
+    python -m vereinsstatistik.cli analyze --out report.json
+    python -m vereinsstatistik.cli analyze --in data.json --out report.json
     python -m vereinsstatistik.cli test-connection
 """
 from __future__ import annotations
@@ -91,16 +93,22 @@ def cmd_fetch(args) -> int:
     return 0
 
 
-def cmd_analyze(args) -> int:
-    cfg = load_config()
-    try:
-        data = load_data(args.infile)
-    except (OSError, ValueError) as exc:
-        print(f"FEHLER: Daten konnten nicht geladen werden: {exc}", file=sys.stderr)
-        return 1
+WOCHENTAGE = [
+    "Montag",
+    "Dienstag",
+    "Mittwoch",
+    "Donnerstag",
+    "Freitag",
+    "Samstag",
+    "Sonntag",
+]
 
-    report = analyze(data, cfg)
 
+def _print_analyse_zusammenfassung(report) -> None:
+    """Lesbare deutsche Zusammenfassung des Reports auf der Konsole ausgeben.
+
+    Stil konsistent mit cmd_inspect/cmd_fetch (einfache print-Ausgaben).
+    """
     gk = report["gesamtkennzahlen"]
     print("Zusammenfassung:")
     print(f"  Mitglieder gesamt:        {gk['anzahl_mitglieder_gesamt']}")
@@ -110,10 +118,86 @@ def cmd_analyze(args) -> int:
     print(f"  Schnitt anwesend/Stunde:  {gk['schnitt_anwesend_pro_stunde']}")
     print(f"  Gesamtbeteiligungsquote:  {gk['gesamtbeteiligungsquote']} %")
 
+    # Top-3 und Flop-3 Anwesenheit (absteigend sortierte Liste).
+    top_flop = report.get("top_flop_anwesenheit") or []
+    if top_flop:
+        print("\nTop-3 Anwesenheit:")
+        for z in top_flop[:3]:
+            print(f"  {z['rang']}. {z['name']}: {z['anwesend_absolut']} Teilnahme(n)")
+        print("Flop-3 Anwesenheit:")
+        for z in list(reversed(top_flop))[:3]:
+            print(f"  {z['name']}: {z['anwesend_absolut']} Teilnahme(n)")
+
+    # Hoechste Risiko-Mitglieder.
+    risiko = sorted(
+        report.get("risiko_score") or [],
+        key=lambda z: (-z["risiko_score"], z["name"]),
+    )
+    if risiko:
+        print("\nHoechstes Dropout-Risiko:")
+        for z in risiko[:3]:
+            print(
+                f"  {z['name']}: Score {z['risiko_score']} ({z['risiko_stufe']}), "
+                f"{z['stunden_seit_letzter_anwesenheit']} Stunde(n) seit letzter Anwesenheit"
+            )
+
+    # Kurze Saison-Hinweise (staerkster Monat und Wochentag).
+    saison = report.get("saisonalitaet") or {}
+    pro_monat = saison.get("pro_monat") or []
+    pro_wochentag = saison.get("pro_wochentag") or []
+    if pro_monat or pro_wochentag:
+        print("\nSaison-Hinweise:")
+        if pro_monat:
+            bester_monat = max(pro_monat, key=lambda m: m["schnitt_anwesend"])
+            print(
+                f"  Staerkster Monat: {bester_monat['monat']:02d} "
+                f"(Schnitt {bester_monat['schnitt_anwesend']} anwesend)"
+            )
+        if pro_wochentag:
+            bester_wtag = max(pro_wochentag, key=lambda w: w["schnitt_anwesend"])
+            name = WOCHENTAGE[bester_wtag["wochentag"]] if 0 <= bester_wtag["wochentag"] < 7 else str(bester_wtag["wochentag"])
+            print(
+                f"  Staerkster Wochentag: {name} "
+                f"(Schnitt {bester_wtag['schnitt_anwesend']} anwesend)"
+            )
+
+    # Kurze Thema-Hinweise (bestes Thema nach Durchschnitt).
+    themen = report.get("thema_ranking") or []
+    if themen:
+        bestes = themen[0]
+        print("\nThema-Hinweise:")
+        print(
+            f"  Bestbesuchtes Thema ({bestes['thema_quelle']}): "
+            f"{bestes['thema_key']} (Schnitt {bestes['schnitt_anwesend']} anwesend)"
+        )
+
+
+def cmd_analyze(args) -> int:
+    cfg = load_config()
+
+    if args.in_path:
+        # Aus gespeichertem JSON laden - kein Notion-Abruf.
+        try:
+            data = load_data(args.in_path)
+        except (OSError, ValueError) as exc:
+            print(f"FEHLER: Daten konnten nicht geladen werden: {exc}", file=sys.stderr)
+            return 1
+    else:
+        # Live aus Notion abrufen, analog cmd_fetch.
+        try:
+            with _client(cfg) as client:
+                data = fetch_all(cfg, client)
+        except NotionError as exc:
+            print(f"FEHLER: {exc}", file=sys.stderr)
+            return 1
+
+    report = analyze(data, cfg)
+    _print_analyse_zusammenfassung(report)
+
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(report, fh, ensure_ascii=False, indent=2)
-        print(f"Report gespeichert nach {args.out}")
+        print(f"Gespeichert nach {args.out}")
     return 0
 
 
@@ -127,9 +211,14 @@ def main(argv=None) -> int:
     p_fetch = sub.add_parser("fetch", help="Daten abrufen")
     p_fetch.add_argument("--out", help="Pfad für JSON-Ausgabe", default=None)
 
-    p_analyze = sub.add_parser("analyze", help="Kennzahlen aus gespeichertem JSON berechnen")
-    p_analyze.add_argument("--in", dest="infile", required=True, help="Pfad zur Eingabe-JSON (aus fetch --out)")
-    p_analyze.add_argument("--out", help="Pfad für den Report als JSON", default=None)
+    p_analyze = sub.add_parser("analyze", help="Kennzahlen berechnen (live aus Notion oder aus JSON)")
+    p_analyze.add_argument(
+        "--in",
+        dest="in_path",
+        default=None,
+        help="Pfad zu zuvor per fetch gespeicherter JSON (ohne Notion-Abruf)",
+    )
+    p_analyze.add_argument("--out", default=None, help="Pfad für JSON-Report")
 
     args = parser.parse_args(argv)
     return {
