@@ -6,7 +6,11 @@ data.json wird in tmp_path geschrieben, dann main(['analyze', ...]) aufgerufen.
 """
 import json
 
+import pytest
+
+from vereinsstatistik import cli
 from vereinsstatistik.cli import main
+from vereinsstatistik.notion_client import NotionError
 
 
 def _synthetische_daten():
@@ -64,3 +68,52 @@ def test_analyze_in_ohne_out(tmp_path, capsys):
     assert rc == 0
     ausgabe = capsys.readouterr().out
     assert "Zusammenfassung:" in ausgabe
+
+
+# ---------------------------------------------------------------------------
+# Live-Notion-Pfad von analyze (ohne --in), ueber gemockte Notion-Zugaenge.
+# Es wird KEIN echter Netz-/Notion-Zugriff ausgefuehrt: load_config, _client und
+# fetch_all werden ersetzt. Geprueft werden Dispatch (Erfolgsfall) und die
+# Fehlerbehandlung (NotionError -> 'FEHLER: ...' auf stderr, Exit 1).
+# ---------------------------------------------------------------------------
+
+class _FakeConfig:
+    analysis = None
+
+
+class _FakeClientCtx:
+    """Minimaler Kontextmanager-Ersatz fuer _client(cfg)."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_analyze_live_pfad_erfolg(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_config", lambda: _FakeConfig())
+    monkeypatch.setattr(cli, "_client", lambda cfg: _FakeClientCtx())
+    monkeypatch.setattr(cli, "fetch_all", lambda cfg, client: _synthetische_daten())
+
+    rc = main(["analyze"])  # kein --in -> Live-Pfad
+
+    assert rc == 0
+    ausgabe = capsys.readouterr().out
+    assert "Zusammenfassung:" in ausgabe
+
+
+def test_analyze_live_pfad_notion_fehler(monkeypatch, capsys):
+    def _boom(cfg, client):
+        raise NotionError("Token ungueltig")
+
+    monkeypatch.setattr(cli, "load_config", lambda: _FakeConfig())
+    monkeypatch.setattr(cli, "_client", lambda cfg: _FakeClientCtx())
+    monkeypatch.setattr(cli, "fetch_all", _boom)
+
+    rc = main(["analyze"])  # kein --in -> Live-Pfad, Fehlerfall
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "FEHLER:" in err
+    assert "Token ungueltig" in err

@@ -128,16 +128,18 @@ def _print_analyse_zusammenfassung(report) -> None:
         for z in list(reversed(top_flop))[:3]:
             print(f"  {z['name']}: {z['anwesend_absolut']} Teilnahme(n)")
 
-    # Hoechste Risiko-Mitglieder.
+    # Hoechste Risiko-Mitglieder. Nicht bewertbare Mitglieder (Score None)
+    # werden hier nicht als Hochrisiko einsortiert, sondern ans Ende gestellt.
     risiko = sorted(
         report.get("risiko_score") or [],
-        key=lambda z: (-z["risiko_score"], z["name"]),
+        key=lambda z: (-(z["risiko_score"] if z.get("risiko_score") is not None else -1.0), z["name"]),
     )
     if risiko:
         print("\nHoechstes Dropout-Risiko:")
         for z in risiko[:3]:
+            score_text = z["risiko_score"] if z["risiko_score"] is not None else "n/a"
             print(
-                f"  {z['name']}: Score {z['risiko_score']} ({z['risiko_stufe']}), "
+                f"  {z['name']}: Score {score_text} ({z['risiko_stufe']}), "
                 f"{z['stunden_seit_letzter_anwesenheit']} Stunde(n) seit letzter Anwesenheit"
             )
 

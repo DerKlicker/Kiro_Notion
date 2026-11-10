@@ -165,9 +165,25 @@ def test_risiko_score_treuer_besucher_niedrig():
     ]
     rows = {z["mitglied_id"]: z for z in risiko_score(mitglieder, gruppenstunden)}
     row = rows["t"]
+    assert row["bewertbar"] is True
     assert row["stunden_seit_letzter_anwesenheit"] == 0
     assert row["risiko_score"] == pytest.approx(0.0)
     assert row["risiko_stufe"] == "niedrig"
+
+
+def test_risiko_score_ohne_aktive_stunden_ist_unbekannt():
+    # Neuzugang tritt nach der letzten vorhandenen Stunde ein -> keine aktiven
+    # Stunden. Das darf NICHT wie ein echtes Nullrisiko (0.0/"niedrig")
+    # aussehen, sondern muss als nicht bewertbar markiert sein.
+    mitglieder = [{"_id": "neu", "name": "Neu", "eintrittsdatum": "2030-01-01"}]
+    gruppenstunden = [{"_id": "g1", "datum": "2024-01-01", "teilnehmer": []}]
+    rows = {z["mitglied_id"]: z for z in risiko_score(mitglieder, gruppenstunden)}
+    row = rows["neu"]
+    assert row["bewertbar"] is False
+    assert row["risiko_score"] is None
+    assert row["risiko_stufe"] == "unbekannt"
+    assert row["quote_letzte_n"] is None
+    assert row["quote_davor"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -300,8 +316,31 @@ def test_gesamtkennzahlen():
     assert gk["anzahl_gruppenstunden"] == 2
     assert gk["anzahl_lager"] == 1
     assert gk["schnitt_anwesend_pro_stunde"] == 1.5  # (2+1)/2
-    # Gesamtbeteiligung: 3 Anwesenheiten / (3 Mitglieder * 2 Stunden) = 50 %.
+    # Faire Gesamtquote = Durchschnitt der fairen Einzelquoten. Ohne Ein-/
+    # Austrittsdaten zaehlen fuer jedes Mitglied beide Stunden als moeglich:
+    # m1 100 %, m2 50 %, m3 0 % -> Durchschnitt 50 %.
     assert gk["gesamtbeteiligungsquote"] == 50.0
+    # Ungewichtete Rohquote als bewusster Zusatz: 3 / (3 * 2) * 100 = 50 %.
+    assert gk["gesamtbeteiligungsquote_roh"] == 50.0
+
+
+def test_gesamtbeteiligungsquote_fair_vs_roh_bei_fluktuation():
+    # Neuzugang "neu" tritt erst zur letzten Stunde ein. Die faire Quote darf
+    # ihn nicht fuer fruehere Stunden bestrafen, die Rohquote hingegen schon.
+    mitglieder = [
+        {"_id": "alt", "name": "Alt", "eintrittsdatum": "2024-01-01"},
+        {"_id": "neu", "name": "Neu", "eintrittsdatum": "2024-03-01"},
+    ]
+    gruppenstunden = [
+        {"_id": "g1", "datum": "2024-01-10", "teilnehmer": ["alt"]},
+        {"_id": "g2", "datum": "2024-02-10", "teilnehmer": ["alt"]},
+        {"_id": "g3", "datum": "2024-03-10", "teilnehmer": ["alt", "neu"]},
+    ]
+    gk = gesamtkennzahlen(mitglieder, gruppenstunden, [])
+    # Fair: alt 100 % (3/3), neu 100 % (1/1 moeglich) -> Durchschnitt 100 %.
+    assert gk["gesamtbeteiligungsquote"] == 100.0
+    # Roh: 4 Anwesenheiten / (2 Mitglieder * 3 Stunden) * 100 = 66.67 %.
+    assert gk["gesamtbeteiligungsquote_roh"] == 66.67
 
 
 # ---------------------------------------------------------------------------

@@ -68,7 +68,11 @@ Was berechnet wird:
 7. **Pünktlichkeit** — Verspätungen pro Mitglied, sofern das Feld `zu_spaet`
    auswertbar strukturiert ist (sonst sauber übersprungen).
 8. **Gesamtkennzahlen** — Mitglieder gesamt/aktiv, Anzahl Gruppenstunden/Lager,
-   Schnitt anwesend pro Stunde und Gesamtbeteiligungsquote.
+   Schnitt anwesend pro Stunde und Gesamtbeteiligungsquote. Die
+   Gesamtbeteiligungsquote ist der Durchschnitt der fairen Einzelquoten
+   (Kennzahl 2) und folgt damit demselben Fairness-Prinzip; die ungewichtete
+   Rohquote (alle Mitglieder mal alle Stunden) wird zusaetzlich als
+   `gesamtbeteiligungsquote_roh` ausgewiesen.
 
 `analyze` aufrufen (gibt eine deutsche Zusammenfassung auf der Konsole aus und
 schreibt mit `--out` den vollständigen Report als JSON):
@@ -94,7 +98,11 @@ hinterlegt und können dort leicht an den Verein angepasst werden:
   (`RISIKO_GEWICHT_ABWESENHEIT = 0.5`) zusammen; die Abwesenheits-Komponente
   erreicht nach `RISIKO_ABWESENHEIT_MAX = 5` verpassten Stunden ihren Maximalwert.
   Die Einstufung erfolgt über `RISIKO_SCHWELLE_NIEDRIG = 0.34` und
-  `RISIKO_SCHWELLE_HOCH = 0.67` in niedrig/mittel/hoch.
+  `RISIKO_SCHWELLE_HOCH = 0.67` in niedrig/mittel/hoch. Hat ein Mitglied keine
+  Stunden im aktiven Zeitraum, ist es nicht bewertbar: der Score ist dann
+  `None`, die Stufe lautet `"unbekannt"` und `bewertbar` ist `False`. So wird
+  dieser Fall klar vom echten Nullrisiko (Score 0.0, Stufe "niedrig") eines
+  treuen Mitglieds unterschieden.
 - **Faire Beteiligung / letzte N Stunden:** Pro Mitglied zählen nur die
   Gruppenstunden, deren Datum im aktiven Zeitraum liegt (ab `eintrittsdatum`,
   bis `austrittsdatum` bzw. bis zur letzten vorhandenen Stunde). Hat ein

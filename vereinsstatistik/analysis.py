@@ -306,8 +306,15 @@ def faire_beteiligung(
 # KENNZAHL 3 - Risiko-/Dropout-Score
 # ---------------------------------------------------------------------------
 
-def _risiko_stufe(score: float) -> str:
-    """Score (0.0 bis 1.0) in eine Stufe uebersetzen."""
+def _risiko_stufe(score: Optional[float]) -> str:
+    """Score (0.0 bis 1.0) in eine Stufe uebersetzen.
+
+    Ist der Score ``None`` (keine aktiven Stunden, nicht bewertbar), lautet die
+    Stufe ``"unbekannt"`` - so wird dieser Fall klar vom echten Nullrisiko
+    ("niedrig") unterschieden.
+    """
+    if score is None:
+        return "unbekannt"
     if score < RISIKO_SCHWELLE_NIEDRIG:
         return "niedrig"
     if score <= RISIKO_SCHWELLE_HOCH:
@@ -336,8 +343,15 @@ def risiko_score(
     RISIKO_SCHWELLE_* in niedrig/mittel/hoch eingeteilt. Alle Konstanten sind am
     Modulkopf dokumentiert und koennen angepasst werden.
 
+    Umgang mit 0 aktiven Stunden: Hat ein Mitglied keine Stunden im aktiven
+    Zeitraum (z. B. ein Neuzugang mit Eintritt nach der letzten vorhandenen
+    Stunde), ist es fachlich nicht bewertbar. Analog zur fairen Beteiligung
+    wird dann ``bewertbar=False``, ``risiko_score=None`` und
+    ``risiko_stufe="unbekannt"`` gesetzt - so wird dieser Fall klar vom echten
+    Nullrisiko (Score 0.0, Stufe "niedrig") eines treuen Mitglieds abgegrenzt.
+
     Rueckgabe: Liste flacher dicts
-    {mitglied_id, name, quote_letzte_n, quote_davor,
+    {mitglied_id, name, bewertbar, quote_letzte_n, quote_davor,
      stunden_seit_letzter_anwesenheit, risiko_score, risiko_stufe}.
     """
     stunden_mit_datum = [
@@ -355,6 +369,22 @@ def risiko_score(
         aktive = _moegliche_stunden_fuer(m, stunden_mit_datum, max_datum)
         # aktive sind bereits chronologisch (Herkunft chronologisch sortiert).
         anwesenheiten = [1 if mid in _teilnehmer_ids(s) else 0 for s in aktive]
+
+        # Keine aktiven Stunden -> nicht bewertbar (vom Nullrisiko abgrenzen).
+        if not anwesenheiten:
+            ergebnis.append(
+                {
+                    "mitglied_id": mid,
+                    "name": _display_name(m),
+                    "bewertbar": False,
+                    "quote_letzte_n": None,
+                    "quote_davor": None,
+                    "stunden_seit_letzter_anwesenheit": 0,
+                    "risiko_score": None,
+                    "risiko_stufe": _risiko_stufe(None),
+                }
+            )
+            continue
 
         letzte_n = anwesenheiten[-RISIKO_FENSTER_N:]
         davor = anwesenheiten[:-RISIKO_FENSTER_N] if len(anwesenheiten) > RISIKO_FENSTER_N else []
@@ -385,6 +415,7 @@ def risiko_score(
             {
                 "mitglied_id": mid,
                 "name": _display_name(m),
+                "bewertbar": True,
                 "quote_letzte_n": quote_letzte_n,
                 "quote_davor": quote_davor,
                 "stunden_seit_letzter_anwesenheit": stunden_seit,
@@ -620,7 +651,6 @@ def puenktlichkeit(
     if not verfuegbar:
         return {"verfuegbar": False, "pro_mitglied": []}
 
-    lookup = build_member_lookup(mitglieder)
     pro_mitglied = [
         {
             "mitglied_id": m.get("_id"),
@@ -650,8 +680,18 @@ def gesamtkennzahlen(
     * anzahl_mitglieder_gesamt: alle Mitglieder
     * anzahl_gruppenstunden / anzahl_lager
     * schnitt_anwesend_pro_stunde: Durchschnitt der len(teilnehmer) je Stunde
-    * gesamtbeteiligungsquote: Summe aller Anwesenheiten /
-      (anzahl_mitglieder_gesamt * anzahl_gruppenstunden) * 100
+    * gesamtbeteiligungsquote: Durchschnitt der fairen Beteiligungsquoten
+      (Kennzahl 2) ueber alle bewertbaren Mitglieder. Diese Definition folgt
+      demselben Fairness-Prinzip wie die uebrigen mitgliederbezogenen
+      Kennzahlen: jedes Mitglied wird nur an den Stunden seines aktiven
+      Zeitraums (Eintritt bis Austritt bzw. letzte Stunde) gemessen, sodass
+      Zu- und Abgaenge die Quote nicht kuenstlich druecken. Mitglieder ohne
+      bewertbare Quote (None) fliessen nicht in den Durchschnitt ein. Gibt es
+      keine bewertbaren Mitglieder, ist die Quote 0.0.
+    * gesamtbeteiligungsquote_roh: die fruehere ungewichtete Rohquote
+      (Summe aller Anwesenheiten / (anzahl_mitglieder_gesamt *
+      anzahl_gruppenstunden) * 100). Sie ignoriert aktive Zeitraeume und wird
+      bewusst nur als ungewichtete Zusatzkennzahl mitgefuehrt.
 
     Rueckgabe: flaches dict.
     """
@@ -663,8 +703,17 @@ def gesamtkennzahlen(
     summe_anwesend = sum(anwesenheiten)
     schnitt = round(summe_anwesend / anzahl_stunden, 2) if anzahl_stunden else 0.0
 
+    # Faire Gesamtquote: Durchschnitt der bewertbaren fairen Einzelquoten.
+    faire_quoten = [
+        row["quote_prozent"]
+        for row in faire_beteiligung(alle, gruppenstunden)
+        if row["quote_prozent"] is not None
+    ]
+    gesamtquote = round(mean(faire_quoten), 2) if faire_quoten else 0.0
+
+    # Ungewichtete Rohquote (bewusst als Zusatz, ignoriert aktive Zeitraeume).
     nenner = len(alle) * anzahl_stunden
-    gesamtquote = round(summe_anwesend / nenner * 100, 2) if nenner else 0.0
+    gesamtquote_roh = round(summe_anwesend / nenner * 100, 2) if nenner else 0.0
 
     return {
         "anzahl_aktive_mitglieder": len(aktive),
@@ -673,6 +722,7 @@ def gesamtkennzahlen(
         "anzahl_lager": len(lager or []),
         "schnitt_anwesend_pro_stunde": schnitt,
         "gesamtbeteiligungsquote": gesamtquote,
+        "gesamtbeteiligungsquote_roh": gesamtquote_roh,
     }
 
 
