@@ -1,0 +1,17 @@
+# HTTP-Client für die Notion API (wir sprechen die REST-API direkt an,
+# damit wir die aktuelle Data-Sources-API 2025-09-03 voll kontrollieren).
+httpx>=0.27,<0.29
+
+# Web-UI + API
+fastapi>=0.115,<0.120
+uvicorn[standard]>=0.30,<0.35
+jinja2>=3.1,<4
+python-multipart>=0.0.9,<0.1
+
+# Konfiguration & Umgebung
+pyyaml>=6.0,<7
+python-dotenv>=1.0,<2
+pydantic>=2.7,<3
+
+# Tests
+pytest>=8,<9
