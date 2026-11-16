@@ -153,8 +153,10 @@ Persistente Volumes und Secrets (`NOTION_TOKEN`, `PG_PASSWORD`) kommen aus der
 **Grafana:** Datenquelle und Dashboards werden per Provisioning aus
 `grafana/provisioning/` automatisch geladen. Das Dashboard `Vereinsstatistik`
 zeigt Top/Flop-Anwesenheit, faire Beteiligung, Risiko-Liste, Saisonalitaet pro
-Monat und Wochentag, Thema-Ranking und Gesamtkennzahlen (jeweils gefiltert auf
-den juengsten Lauf) sowie die Gesamtbeteiligungsquote im Zeitverlauf.
+Monat und Wochentag, Thema-Ranking, Lager-Korrelation, Puenktlichkeit und
+Gesamtkennzahlen (jeweils gefiltert auf den juengsten Lauf) sowie die
+Gesamtbeteiligungsquote im Zeitverlauf. Damit decken die Panels alle acht
+Kennzahlen aus Phase 2 ab.
 
 Die vollstaendige Schritt-fuer-Schritt-Anleitung steht in
 [docs/TRUENAS.md](docs/TRUENAS.md).

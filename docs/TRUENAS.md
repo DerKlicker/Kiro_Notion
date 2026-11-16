@@ -145,8 +145,9 @@ Datenquelle und Dashboard werden automatisch per Provisioning geladen (die
   Das Passwort kommt ueber `${PG_PASSWORD}` aus der `.env`.
 - Dashboard `Vereinsstatistik` (Ordner `Vereinsstatistik`) mit Panels fuer
   Top/Flop-Anwesenheit, faire Beteiligung, Risiko-Liste, Saisonalitaet pro
-  Monat und Wochentag, Thema-Ranking, Gesamtkennzahlen und der
-  Gesamtbeteiligungsquote im Zeitverlauf.
+  Monat und Wochentag, Thema-Ranking, Lager-Korrelation, Puenktlichkeit,
+  Gesamtkennzahlen und der Gesamtbeteiligungsquote im Zeitverlauf. Damit sind
+  alle acht Kennzahlen aus Phase 2 abgedeckt.
 
 Alle Panels filtern auf den juengsten Lauf via
 `run_id = (SELECT max(run_id) FROM public.laeufe)`. Verwendest du in der

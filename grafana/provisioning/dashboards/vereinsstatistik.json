@@ -15,7 +15,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "description": "Vereinsstatistik - Kennzahlen aus dem juengsten Analyse-Lauf (Notion -> PostgreSQL). Alle Panels filtern auf den aktuellsten run_id via max(run_id) aus public.laeufe. Bei abweichendem Schema in config.yaml das SQL entsprechend anpassen.",
+  "description": "Vereinsstatistik - alle acht Kennzahlen aus dem juengsten Analyse-Lauf (Notion -> PostgreSQL). Alle Panels filtern auf den aktuellsten run_id via max(run_id) aus public.laeufe. Die Panel-SQL nutzt fest das Schema 'public.'; bei abweichendem postgres.schema in der config.yaml das SQL in den Panels entsprechend anpassen (siehe docs/TRUENAS.md Abschnitt 7).",
   "links": [],
   "liveNow": false,
   "panels": [
@@ -422,6 +422,85 @@
       ],
       "title": "Thema-Ranking (Schnitt anwesend je Thema)",
       "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 },
+      "id": 105,
+      "panels": [],
+      "title": "Lager und Puenktlichkeit",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Schnitt-Quote (%)" },
+            "properties": [ { "id": "unit", "value": "percent" } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Differenz (%-Punkte)" },
+            "properties": [ { "id": "unit", "value": "percent" } ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 57 },
+      "id": 12,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE gruppe WHEN 'lagerteilnehmer' THEN 'Lagerteilnehmer' WHEN 'nicht_teilnehmer' THEN 'Nicht-Teilnehmer' ELSE gruppe END AS \"Gruppe\", anzahl AS \"Anzahl Mitglieder\", schnitt_quote AS \"Schnitt-Quote (%)\", differenz AS \"Differenz (%-Punkte)\" FROM public.kennzahl_lager_korrelation WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY gruppe ASC;",
+          "refId": "A"
+        }
+      ],
+      "title": "Lager-Korrelation (Beteiligung Lagerteilnehmer vs. Nicht-Teilnehmer)",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisLabel": "", "fillOpacity": 80, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 57 },
+      "id": 13,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT name AS \"Mitglied\", verspaetungen AS \"Verspaetungen\" FROM public.kennzahl_puenktlichkeit WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND verfuegbar = true AND name IS NOT NULL ORDER BY verspaetungen DESC NULLS LAST;",
+          "refId": "A"
+        }
+      ],
+      "title": "Puenktlichkeit (Verspaetungen je Mitglied)",
+      "type": "barchart"
     }
   ],
   "refresh": "",
