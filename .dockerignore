@@ -1,0 +1,38 @@
+# Nicht ins Build-Context / Image aufnehmen.
+# Haelt das Image schlank und verhindert, dass Secrets oder lokale
+# Artefakte versehentlich hineingebacken werden.
+
+# Virtuelle Umgebungen
+.venv
+venv
+
+# Versionskontrolle
+.git
+.gitignore
+
+# Python-Caches
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+
+# Tests (werden im Image nicht gebraucht)
+tests
+
+# Secrets und lokale Konfiguration
+.env
+*.env
+config.yaml
+
+# Lokale Ausgaben
+data.json
+report.json
+*.log
+
+# Aufgaben-/Planungsdateien
+.agents
+
+# OS / Editor
+.DS_Store
+.idea
+.vscode

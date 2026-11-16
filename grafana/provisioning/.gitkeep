@@ -1,0 +1,2 @@
+# Platzhalter. Dieses Verzeichnis wird nach /etc/grafana/provisioning gemountet
+# (siehe docker-compose.yml). Die Datenquelle und die Dashboards liefert FEAT-004.
