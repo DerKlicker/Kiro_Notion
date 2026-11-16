@@ -1,0 +1,23 @@
+# =============================================================================
+# Grafana-Dashboard-Provider (Provisioning).
+# =============================================================================
+# Laedt alle Dashboard-JSONs aus dem gemounteten Provisioning-Verzeichnis
+# automatisch beim Start von Grafana. Neue oder geaenderte Dashboards in
+# diesem Ordner werden periodisch neu eingelesen (updateIntervalSeconds).
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: Vereinsstatistik
+    orgId: 1
+    folder: Vereinsstatistik
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      # Verzeichnis, aus dem die Dashboard-JSONs geladen werden.
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

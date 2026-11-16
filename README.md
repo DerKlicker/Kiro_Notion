@@ -19,7 +19,7 @@ du pflegst alles direkt über die `config.yaml` (praktisch auf TrueNAS).
 
 - [x] **Phase 1** — Notion-Anbindung, konfigurierbares Mapping, Web-UI, Struktur-Inspektor
 - [x] **Phase 2** — Kennzahlen-Logik (Anwesenheit, relative Beteiligung, Risiko, Saisonalität …)
-- [ ] **Phase 3** — PostgreSQL-Schema + ETL-Sync + Grafana-Dashboards (TrueNAS)
+- [x] **Phase 3** — PostgreSQL-Schema + ETL-Sync + Grafana-Dashboards (TrueNAS)
 
 ## Schnellstart (lokal)
 
@@ -117,6 +117,56 @@ hinterlegt und können dort leicht an den Verein angepasst werden:
   **stundenbasierten** Auswertungen (Saisonalität, Thema-Ranking) bleiben
   unberührt, und die Gesamtkennzahlen weisen aktive und gesamte Mitgliederzahl
   ohnehin getrennt aus.
+
+## Phase 3 - PostgreSQL, Container und Grafana (TrueNAS)
+
+Phase 3 macht das Tool auf TrueNAS SCALE deploybar: die in Phase 2 berechneten
+Kennzahlen werden je Lauf nach PostgreSQL geschrieben und mit Grafana
+visualisiert.
+
+**Neue CLI-Commands:**
+
+```bash
+# Datenbankschema anlegen (idempotent, kann wiederholt werden):
+python -m vereinsstatistik.cli init-db
+
+# Auswerten und das Ergebnis als neuen Lauf nach PostgreSQL schreiben:
+python -m vereinsstatistik.cli sync
+
+# Varianten von sync:
+python -m vereinsstatistik.cli sync --init-db     # Schema vorher anlegen
+python -m vereinsstatistik.cli sync --in data.json  # aus gespeicherter JSON statt live aus Notion
+```
+
+**Schema:** Das versionierte SQL-Schema (`vereinsstatistik/db/schema.sql`) legt
+eine Lauf-/Snapshot-Tabelle `laeufe` (ein Eintrag je `run_id` mit Zeitstempel)
+sowie je eine Tabelle pro Kennzahl an. Jeder Sync erzeugt einen neuen `run_id`;
+historische Laeufe bleiben fuer Zeitreihen erhalten. Der Schemaname ist
+konfigurierbar (`postgres.schema` in der `config.yaml`, Standard `public`).
+
+**Container:** Der Stack ist in der `docker-compose.yml` beschrieben und umfasst
+die Dienste `postgres` (Datenbank), `app` (Web-UI, Port 8000), `etl-cron`
+(periodischer Sync im einstellbaren Intervall) und `grafana` (Port 3000).
+Persistente Volumes und Secrets (`NOTION_TOKEN`, `PG_PASSWORD`) kommen aus der
+`.env` (Vorlage: `.env.example`).
+
+**Grafana:** Datenquelle und Dashboards werden per Provisioning aus
+`grafana/provisioning/` automatisch geladen. Das Dashboard `Vereinsstatistik`
+zeigt Top/Flop-Anwesenheit, faire Beteiligung, Risiko-Liste, Saisonalitaet pro
+Monat und Wochentag, Thema-Ranking und Gesamtkennzahlen (jeweils gefiltert auf
+den juengsten Lauf) sowie die Gesamtbeteiligungsquote im Zeitverlauf.
+
+Die vollstaendige Schritt-fuer-Schritt-Anleitung steht in
+[docs/TRUENAS.md](docs/TRUENAS.md).
+
+**Zwei Annahmen** (dort im Detail begruendet):
+
+1. Zielplattform ist TrueNAS SCALE mit Docker/Apps, nicht CORE/FreeBSD.
+2. Es wird eine dedizierte eigene PostgreSQL-Instanz nur fuer dieses Tool
+   genutzt. Eine bestehende PostgreSQL waere via `host`/`port`/`database`/`user`
+   in der `config.yaml` (plus `PG_PASSWORD` in der `.env`) ebenfalls nutzbar;
+   dann den `postgres`-Dienst in der `docker-compose.yml` weglassen und den
+   `host` entsprechend setzen.
 
 ## Konfiguration
 

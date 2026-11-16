@@ -1,0 +1,438 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "description": "Vereinsstatistik - Kennzahlen aus dem juengsten Analyse-Lauf (Notion -> PostgreSQL). Alle Panels filtern auf den aktuellsten run_id via max(run_id) aus public.laeufe. Bei abweichendem Schema in config.yaml das SQL entsprechend anpassen.",
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Gesamtkennzahlen (juengster Lauf)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT anzahl_aktive_mitglieder AS \"Aktive Mitglieder\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe);",
+          "refId": "A"
+        }
+      ],
+      "title": "Aktive Mitglieder",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT anzahl_gruppenstunden AS \"Gruppenstunden\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe);",
+          "refId": "A"
+        }
+      ],
+      "title": "Anzahl Gruppenstunden",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT anzahl_lager AS \"Lager\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe);",
+          "refId": "A"
+        }
+      ],
+      "title": "Anzahl Lager",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 40 }, { "color": "green", "value": 70 } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT gesamtbeteiligungsquote AS \"Gesamtbeteiligungsquote\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe);",
+          "refId": "A"
+        }
+      ],
+      "title": "Gesamtbeteiligungsquote (fair)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT l.erstellt_am AS time, g.gesamtbeteiligungsquote AS \"Gesamtbeteiligungsquote (fair)\", g.gesamtbeteiligungsquote_roh AS \"Rohquote\" FROM public.kennzahl_gesamt g JOIN public.laeufe l ON l.run_id = g.run_id ORDER BY l.erstellt_am;",
+          "refId": "A"
+        }
+      ],
+      "title": "Gesamtbeteiligungsquote im Zeitverlauf (alle Laeufe)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 101,
+      "panels": [],
+      "title": "Anwesenheit und Beteiligung",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisLabel": "", "fillOpacity": 80, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 14 },
+      "id": 6,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT name AS \"Mitglied\", anwesend_absolut AS \"Anwesend (absolut)\" FROM public.kennzahl_top_flop_anwesenheit WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY rang ASC, anwesend_absolut DESC;",
+          "refId": "A"
+        }
+      ],
+      "title": "Top/Flop-Anwesenheit (absolute Teilnahmen)",
+      "type": "barchart"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Faire Quote (%)" },
+            "properties": [ { "id": "unit", "value": "percent" }, { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } } ]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 14 },
+      "id": 7,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT name AS \"Mitglied\", moegliche_stunden AS \"Moegliche Stunden\", anwesend AS \"Anwesend\", quote_prozent AS \"Faire Quote (%)\" FROM public.kennzahl_faire_beteiligung WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY quote_prozent DESC NULLS LAST;",
+          "refId": "A"
+        }
+      ],
+      "title": "Faire relative Beteiligung",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 102,
+      "panels": [],
+      "title": "Risiko",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Risiko-Score" },
+            "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.34 }, { "color": "red", "value": 0.67 } ] } } ]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 25 },
+      "id": 8,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT name AS \"Mitglied\", risiko_stufe AS \"Stufe\", risiko_score AS \"Risiko-Score\", quote_letzte_n AS \"Quote letzte N (%)\", quote_davor AS \"Quote davor (%)\", stunden_seit_letzter_anwesenheit AS \"Stunden seit letzter Anwesenheit\" FROM public.kennzahl_risiko WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND bewertbar = true ORDER BY risiko_score DESC NULLS LAST;",
+          "refId": "A"
+        }
+      ],
+      "title": "Risiko-Liste (nur bewertbare Mitglieder, nach Score)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+      "id": 103,
+      "panels": [],
+      "title": "Saisonalitaet",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisLabel": "", "fillOpacity": 80, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 36 },
+      "id": 9,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "orientation": "auto",
+        "showValue": "auto",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT monat::text AS \"Monat\", schnitt_anwesend AS \"Schnitt anwesend\" FROM public.kennzahl_saisonalitaet_monat WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY monat ASC;",
+          "refId": "A"
+        }
+      ],
+      "title": "Saisonalitaet pro Monat (Schnitt anwesend)",
+      "type": "barchart"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisLabel": "", "fillOpacity": 80, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 36 },
+      "id": 10,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "orientation": "auto",
+        "showValue": "auto",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE wochentag WHEN 0 THEN 'Montag' WHEN 1 THEN 'Dienstag' WHEN 2 THEN 'Mittwoch' WHEN 3 THEN 'Donnerstag' WHEN 4 THEN 'Freitag' WHEN 5 THEN 'Samstag' WHEN 6 THEN 'Sonntag' ELSE wochentag::text END AS \"Wochentag\", schnitt_anwesend AS \"Schnitt anwesend\" FROM public.kennzahl_saisonalitaet_wochentag WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY wochentag ASC;",
+          "refId": "A"
+        }
+      ],
+      "title": "Saisonalitaet pro Wochentag (Schnitt anwesend)",
+      "type": "barchart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "id": 104,
+      "panels": [],
+      "title": "Thema-Ranking",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 46 },
+      "id": 11,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT thema_key AS \"Thema\", thema_quelle AS \"Quelle\", anzahl_stunden AS \"Anzahl Stunden\", schnitt_anwesend AS \"Schnitt anwesend\" FROM public.kennzahl_thema_ranking WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY schnitt_anwesend DESC NULLS LAST;",
+          "refId": "A"
+        }
+      ],
+      "title": "Thema-Ranking (Schnitt anwesend je Thema)",
+      "type": "table"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": ["vereinsstatistik"],
+  "templating": { "list": [] },
+  "time": { "from": "now-5y", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Vereinsstatistik",
+  "uid": "vereinsstatistik-haupt",
+  "version": 1,
+  "weekStart": ""
+}
