@@ -1,0 +1,11 @@
+Lege in diesem Ordner die aktuelle RJBH-Excel-Vorlage ab und nenne sie:
+
+    rjbh_vorlage.xlsx
+
+Das Programm befüllt immer diese Datei. Wenn der RJBH eine neue Version
+herausgibt, ersetzt du einfach diese Datei durch die neue -- im Code musst du
+nichts ändern (die Spalten werden automatisch anhand der Überschriften erkannt).
+
+Die Vorlage muss ein Blatt namens "TN-Liste" mit den Spaltenüberschriften
+Nachname, Vorname, Straße, PLZ, Ort, Bundesland, Geburtstag, Unterschrift,
+PM, TN, m/w/d enthalten (so wie die Original-Vorlage des RJBH).

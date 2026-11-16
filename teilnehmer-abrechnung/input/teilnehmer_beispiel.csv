@@ -1,0 +1,6 @@
+Name,Straße,PLZ,Ort,Bundesland,Geburtstag,Funktionsstufe,m/w/d,Juleica
+"Max, Mustermann",Test Straße 18,63110,Rodgau,Hessen,16. November 2004,Mitglied,m,false
+"Erika, Musterfrau",Beispielweg 4,63110,Rodgau,Hessen,03.05.2008,Mitglied,w,false
+"Sebastian, Kriegsch",Rhönstraße 16,63110,Rodgau,Hessen,28.07.2002,Gruppenleiter,m,true
+"Lena, Beispiel",Hauptstraße 2,63500,Seligenstadt,Hessen,12.01.2010,Sippenführer,w,false
+"Tim, Testkind",Waldweg 7,63225,Langen,Hessen,2011-09-30,Mitglied,d,false

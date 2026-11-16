@@ -1,0 +1,21 @@
+# Zugangsdaten — NIEMALS einchecken
+.env
+
+# Personenbezogene Daten — nicht ins Repo
+output/
+input/teilnehmer.csv
+
+# RJBH-Vorlage kann personenbezogene Rest-Daten enthalten -> lokal halten
+templates/rjbh_vorlage.xlsx
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Betriebssystem
+.DS_Store
+Thumbs.db

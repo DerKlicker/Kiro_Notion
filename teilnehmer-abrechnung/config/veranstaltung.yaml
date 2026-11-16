@@ -1,0 +1,32 @@
+# ============================================================================
+#  VERANSTALTUNGS-DATEN  —  pro Lager / Event ausfüllen
+# ============================================================================
+# Diese Angaben werden in die Listen eingetragen (Kopfzeilen, Datum usw.).
+# Datumsformat überall:  TT.MM.JJJJ
+# ----------------------------------------------------------------------------
+
+veranstaltung:
+  titel:          "Sommerlager 2026"
+  ort:            "Musterstadt"          # Veranstaltungsort
+  land:           "Deutschland"
+  anreisetag:     "26.07.2026"           # Stichtag für die Altersberechnung
+  abreisetag:     "02.08.2026"
+  # Anzahl Tage: wird automatisch aus An-/Abreisetag berechnet,
+  # kann hier aber überschrieben werden (0 = automatisch berechnen).
+  anzahl_tage:    0
+
+# ----------------------------------------------------------------------------
+#  Veranstalter / Verein  (für das Kreis-Offenbach-Deckblatt und die PDFs)
+# ----------------------------------------------------------------------------
+veranstalter:
+  verein:         "Pfadfinder Nieder-Roden e.V."
+  adresse:        "Neckarstraße 99, 63110 Rodgau"
+  kontaktperson:  "Sebastian Kriegsch"
+  funktion:       "Gruppenleiter"
+  telefon:        ""
+  email:          "Sebastian@pfnr.de"
+  ort_datum:      "Rodgau"               # Ort für die Unterschriftenzeile
+
+# Nur für den RJBH-Kopf
+rjbh:
+  mitgliedsbund:  "Pfadfinder Nieder-Roden"

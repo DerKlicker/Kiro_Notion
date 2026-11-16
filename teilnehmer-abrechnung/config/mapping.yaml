@@ -1,0 +1,46 @@
+# ============================================================================
+#  SPALTEN-MAPPING  —  DEIN zentraler Anpass-Punkt für die Zukunft
+# ============================================================================
+#
+# Hier steht, WELCHE Spalte aus Notion (oder aus der CSV) auf WELCHES interne
+# Feld des Programms abgebildet wird.
+#
+# Ändert sich in Notion ein Spaltenname (z.B. "Geburtstag" -> "Geburtsdatum"),
+# musst du NUR hier rechts den neuen Namen eintragen. Der Rest läuft weiter.
+#
+#   internes_feld:  "So heißt die Spalte in Notion / in der CSV"
+#
+# Die linke Seite (internes_feld) NICHT verändern — darauf baut das Programm auf.
+# ----------------------------------------------------------------------------
+
+felder:
+  # Pflichtfelder
+  name:          "Name"           # kombiniertes Feld "Vorname, Nachname" (z.B. "Max, Mustermann")
+  strasse:       "Straße"
+  plz:           "PLZ"
+  ort:           "Ort"
+  funktionsstufe: "Funktionsstufe" # Mitglied / Sippenführer / Gruppenleiter
+  geburtstag:    "Geburtstag"     # Geburtsdatum der Person
+
+  # Optionale Felder (dürfen in Notion fehlen -> bleiben dann leer)
+  bundesland:    "Bundesland"
+  geschlecht:    "m/w/d"          # erwartete Werte: m, w, d
+  juleica:       "Juleica"        # Boolean (true/false) — Spalte in Notion ggf. neu anlegen
+
+# ----------------------------------------------------------------------------
+#  Namens-Format
+# ----------------------------------------------------------------------------
+# Wie ist das kombinierte Feld "name" aufgebaut?
+#   "vorname_nachname"  ->  "Max, Mustermann"  (Vorname zuerst)   <-- aktuell
+#   "nachname_vorname"  ->  "Mustermann, Max"  (Nachname zuerst)
+name_format: "vorname_nachname"
+name_trennzeichen: ","
+
+# ----------------------------------------------------------------------------
+#  Betreuer-Erkennung (PM = pädagogische Mitarbeiter / Betreuende)
+# ----------------------------------------------------------------------------
+# Welche Werte der Spalte "Funktionsstufe" gelten als Betreuer?
+# Alle NICHT hier aufgeführten Werte gelten als Teilnehmer (TN).
+# Vergleich ist unabhängig von Groß-/Kleinschreibung.
+betreuer_funktionsstufen:
+  - "Gruppenleiter"
