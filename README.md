@@ -63,9 +63,13 @@ Was berechnet wird:
    nicht benachteiligt werden.
 3. **Risiko-/Dropout-Score** — schätzt pro Mitglied das Abbruchrisiko aus dem
    Abfall der Anwesenheit und der Dauer seit der letzten Anwesenheit.
-4. **Saisonalität** — durchschnittliche Anwesenheit je Monat und je Wochentag.
-5. **Thema-Ranking** — durchschnittliche Anwesenheit pro Thema (Themen-Relation
-   bevorzugt, sonst Titel als Fallback).
+4. **Saisonalität** — durchschnittliche Anwesenheit je Monat. Eine Auswertung
+   je Wochentag gibt es bewusst nicht: Gruppenstunden finden immer samstags
+   statt, nur das Sommerlager fällt auf andere Tage.
+5. **Thema-Ranking** — durchschnittliche Anwesenheit pro Thema. Angezeigt wird
+   der lesbare Themenname aus dem Notion-Rollup `thema_name` ("Grafana_Name").
+   Fehlt dieser, greift als Fallback die Themen-Relation (Page-ID), sonst der
+   Titel der Gruppenstunde.
 6. **Lager-Korrelation** — Vergleich der fairen Beteiligungsquote von
    Lagerteilnehmern gegenüber Nicht-Teilnehmern.
 7. **Pünktlichkeit** — Verspätungen pro Mitglied, sofern das Feld `zu_spaet`
@@ -106,18 +110,26 @@ hinterlegt und können dort leicht an den Verein angepasst werden:
   `None`, die Stufe lautet `"unbekannt"` und `bewertbar` ist `False`. So wird
   dieser Fall klar vom echten Nullrisiko (Score 0.0, Stufe "niedrig") eines
   treuen Mitglieds unterschieden.
-- **Faire Beteiligung / letzte N Stunden:** Pro Mitglied zählen nur die
+- **Faire Beteiligung / mögliche Stunden:** Pro Mitglied zählen nur die
   Gruppenstunden, deren Datum im aktiven Zeitraum liegt (ab `eintrittsdatum`,
-  bis `austrittsdatum` bzw. bis zur letzten vorhandenen Stunde). Hat ein
-  Mitglied keine möglichen Stunden, ist die Quote `None` (nicht bewertbar) statt
-  fälschlich 0 %. Der Risiko-Score betrachtet nur die letzten
+  bis `austrittsdatum` bzw. bis zur letzten vorhandenen Stunde). Die möglichen
+  Stunden variieren also mit dem Eintrittsdatum und sind nicht für alle gleich.
+  Hat ein Mitglied keine möglichen Stunden, ist die Quote `None` (nicht
+  bewertbar) statt fälschlich 0 %. Der Risiko-Score betrachtet nur die letzten
   `RISIKO_FENSTER_N` dieser aktiven Stunden gegen die davorliegenden.
-- **`only_active_members`-Verhalten:** Ist `analysis.only_active_members` in der
-  `config.yaml` auf `true` gesetzt, werden ausgeschiedene Mitglieder (Feld
-  `ausgeschieden` oder ein vergangenes `austrittsdatum`) aus den
-  **mitgliederbezogenen** Auswertungen ausgenommen (Top/Flop-Anwesenheit, faire
-  Beteiligung, Risiko-Score, Lager-Korrelation, Pünktlichkeit). Die
-  **stundenbasierten** Auswertungen (Saisonalität, Thema-Ranking) bleiben
+- **Mitglieder-Filter für die Statistik:** Die **mitgliederbezogenen**
+  Auswertungen (Top/Flop-Anwesenheit, faire Beteiligung, Risiko-Score,
+  Lager-Korrelation, Pünktlichkeit) rechnen auf einer gefilterten
+  Mitgliederliste (`mitglieder_fuer_statistik`):
+  - **Ausgeschiedene werden immer ausgeschlossen** (Feld `ausgeschieden` oder
+    ein vergangenes `austrittsdatum`).
+  - Zusätzlich zählen nur Mitglieder mit **Bereich/Stamm = "Gruppenstunde"**
+    (Notion-Select, intern `bereich_stamm`). Andere oder leere Werte werden
+    ausgeschlossen. Defensiver Fallback: Ist die Spalte bei keinem (noch nicht
+    ausgeschiedenen) Mitglied gepflegt, wird der Bereich/Stamm-Filter
+    übersprungen, damit nicht versehentlich die ganze Liste herausfällt.
+
+  Die **stundenbasierten** Auswertungen (Saisonalität, Thema-Ranking) bleiben
   unberührt, und die Gesamtkennzahlen weisen aktive und gesamte Mitgliederzahl
   ohnehin getrennt aus.
 

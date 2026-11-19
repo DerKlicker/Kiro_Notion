@@ -34,7 +34,8 @@ databases:
       spitzname: "Spitznamen"            # schönerer Anzeigename (optional)
       eintrittsdatum: "Eintrittsdatum"   # Date  -> Basis der relativen Beteiligung
       austrittsdatum: "Austrittsdatum"   # Date  (optional)
-      ausgeschieden: "Ausgeschieden"     # Checkbox -> aktiv/inaktiv
+      ausgeschieden: "Ausgeschieden"     # Checkbox -> ausgeschiedene immer ausschließen
+      bereich_stamm: "Bereich/Stamm"     # Select -> nur "Gruppenstunde" zählt in die Statistik
       geburtsdatum: "Geburtsdatum"       # Date  (optional, für Altersauswertung)
       geschlecht: "Geschlecht"           # Select (optional, Segmentierung)
       sippe: "Sippen"                    # Relation/Select (optional, Segmentierung)
@@ -47,7 +48,8 @@ databases:
       titel: "Hauptthema"                       # Title der Gruppenstunde
       datum: "Datum"                            # Date
       teilnehmer: "Sippeneinteilung"            # Relation -> anwesende Mitglieder
-      thema_relation: "Gruppenstunden Themen Datenbank"  # Relation -> Themen-Kategorie
+      thema_relation: "Gruppenstunden Themen Datenbank"  # Relation -> Themen-Kategorie (Fallback)
+      thema_name: "Grafana_Name"                 # Rollup -> lesbarer Themenname fürs Thema-Ranking
       zu_spaet: "Zu spät!"                       # (optional) wer kam zu spät
       jahr: "Jahr Zahl"                          # (optional) Rollup/Zahl
 

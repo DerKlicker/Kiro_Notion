@@ -242,7 +242,9 @@ def _schreibe_kennzahlen(cur, schema: str, run_id: int, report: Dict[str, Any]) 
             zeilen,
         )
 
-    # Kennzahl 4: Saisonalitaet (Monat und Wochentag getrennt).
+    # Kennzahl 4: Saisonalitaet pro Monat. Eine Auswertung pro Wochentag gibt es
+    # bewusst nicht mehr (Gruppenstunden sind immer samstags), daher wird nur
+    # noch pro_monat geschrieben.
     saison = report.get("saisonalitaet") or {}
     zeilen = [
         (run_id, z.get("monat"), z.get("anzahl_stunden"), z.get("summe_anwesend"), z.get("schnitt_anwesend"))
@@ -255,19 +257,10 @@ def _schreibe_kennzahlen(cur, schema: str, run_id: int, report: Dict[str, Any]) 
             "VALUES (%s, %s, %s, %s, %s)",
             zeilen,
         )
-    zeilen = [
-        (run_id, z.get("wochentag"), z.get("anzahl_stunden"), z.get("summe_anwesend"), z.get("schnitt_anwesend"))
-        for z in saison.get("pro_wochentag") or []
-    ]
-    if zeilen:
-        cur.executemany(
-            f"INSERT INTO {_q(schema, 'kennzahl_saisonalitaet_wochentag')} "
-            "(run_id, wochentag, anzahl_stunden, summe_anwesend, schnitt_anwesend) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            zeilen,
-        )
 
-    # Kennzahl 5: Thema-Ranking.
+    # Kennzahl 5: Thema-Ranking (thema_key traegt im Normalfall den lesbaren
+    # Themennamen aus dem Rollup "Grafana_Name"; thema_quelle dokumentiert die
+    # Herkunft: 'name' | 'relation' | 'titel').
     zeilen = [
         (run_id, z.get("thema_key"), z.get("thema_quelle"), z.get("anzahl_stunden"), z.get("schnitt_anwesend"))
         for z in report.get("thema_ranking") or []
