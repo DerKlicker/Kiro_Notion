@@ -221,3 +221,37 @@ def test_ensure_config_initialized_ohne_vorlage_default(tmp_path):
     assert neu is True
     cfg = config_modul.load_config(path=ziel, load_env=False)
     assert set(cfg.databases) == {"mitglieder", "gruppenstunden", "lager"}
+
+
+def test_ensure_config_initialized_bei_schreibfehler_kein_crash(tmp_path, capsys):
+    """Ein nicht beschreibbares Zielverzeichnis darf keinen Crash ausloesen.
+
+    Simuliert den TrueNAS-Fall (gemountetes Volume ohne Schreibrecht): statt
+    einer Exception gibt die Funktion False zurueck und meldet eine Warnung,
+    damit die Web-UI startet statt in einer Restart-Schleife zu haengen.
+    """
+    import pathlib
+
+    ziel = tmp_path / "config_dir" / "config.yaml"
+    vorlage = tmp_path / "config.example.yaml"
+    vorlage.write_text("notion:\n  api_version: \"2025-09-03\"\n", encoding="utf-8")
+
+    # write_text schlaegt mit PermissionError fehl.
+    orig_write = pathlib.Path.write_text
+
+    def fake_write(self, *args, **kwargs):
+        if self == ziel:
+            raise PermissionError(13, "Permission denied")
+        return orig_write(self, *args, **kwargs)
+
+    import unittest.mock as mock
+
+    with mock.patch.object(pathlib.Path, "write_text", fake_write):
+        neu = config_modul.ensure_config_initialized(
+            config_path=ziel, example_path=vorlage
+        )
+
+    assert neu is False
+    assert not ziel.exists()
+    ausgabe = capsys.readouterr().out
+    assert "WARNUNG" in ausgabe
