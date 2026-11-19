@@ -18,7 +18,7 @@ du pflegst alles direkt über die `config.yaml` (praktisch auf TrueNAS).
 ## Projektstatus
 
 - [x] **Phase 1** — Notion-Anbindung, konfigurierbares Mapping, Web-UI, Struktur-Inspektor
-- [ ] **Phase 2** — Kennzahlen-Logik (Anwesenheit, relative Beteiligung, Risiko, Saisonalität …)
+- [x] **Phase 2** — Kennzahlen-Logik (Anwesenheit, relative Beteiligung, Risiko, Saisonalität …)
 - [ ] **Phase 3** — PostgreSQL-Schema + ETL-Sync + Grafana-Dashboards (TrueNAS)
 
 ## Schnellstart (lokal)
@@ -42,6 +42,81 @@ python -m vereinsstatistik.cli inspect
 # Daten aus Notion abrufen und als JSON ausgeben:
 python -m vereinsstatistik.cli fetch --out data.json
 ```
+
+## Phase 2 — Auswertung
+
+Das Modul `vereinsstatistik/analysis.py` berechnet aus den abgerufenen Daten
+(entweder live aus Notion oder aus einer per `fetch --out` gespeicherten JSON)
+acht Kennzahlen. Alle arbeiten rein mit der Standardbibliothek und ohne
+Netz-/Notion-Zugriff, sodass die Auswertung auch offline aus gespeicherten
+Daten läuft.
+
+Was berechnet wird:
+
+1. **Top/Flop-Anwesenheit** — absolute Gruppenstunden-Teilnahmen pro Mitglied
+   mit dichtem Rang, optional nach Jahr gefiltert.
+2. **Faire relative Beteiligung** — Beteiligungsquote pro Mitglied, die nur die
+   Stunden im aktiven Zeitraum (Eintritt bis Austritt) zählt, damit Neuzugänge
+   nicht benachteiligt werden.
+3. **Risiko-/Dropout-Score** — schätzt pro Mitglied das Abbruchrisiko aus dem
+   Abfall der Anwesenheit und der Dauer seit der letzten Anwesenheit.
+4. **Saisonalität** — durchschnittliche Anwesenheit je Monat und je Wochentag.
+5. **Thema-Ranking** — durchschnittliche Anwesenheit pro Thema (Themen-Relation
+   bevorzugt, sonst Titel als Fallback).
+6. **Lager-Korrelation** — Vergleich der fairen Beteiligungsquote von
+   Lagerteilnehmern gegenüber Nicht-Teilnehmern.
+7. **Pünktlichkeit** — Verspätungen pro Mitglied, sofern das Feld `zu_spaet`
+   auswertbar strukturiert ist (sonst sauber übersprungen).
+8. **Gesamtkennzahlen** — Mitglieder gesamt/aktiv, Anzahl Gruppenstunden/Lager,
+   Schnitt anwesend pro Stunde und Gesamtbeteiligungsquote. Die
+   Gesamtbeteiligungsquote ist der Durchschnitt der fairen Einzelquoten
+   (Kennzahl 2) und folgt damit demselben Fairness-Prinzip; die ungewichtete
+   Rohquote (alle Mitglieder mal alle Stunden) wird zusaetzlich als
+   `gesamtbeteiligungsquote_roh` ausgewiesen.
+
+`analyze` aufrufen (gibt eine deutsche Zusammenfassung auf der Konsole aus und
+schreibt mit `--out` den vollständigen Report als JSON):
+
+```bash
+# Variante A: live aus Notion abrufen und auswerten:
+python -m vereinsstatistik.cli analyze --out report.json
+
+# Variante B: aus einer zuvor gespeicherten JSON auswerten (ohne Notion-Abruf):
+python -m vereinsstatistik.cli fetch --out data.json
+python -m vereinsstatistik.cli analyze --in data.json --out report.json
+```
+
+### Dokumentierte fachliche Annahmen
+
+Diese Annahmen sind als benannte Konstanten in `vereinsstatistik/analysis.py`
+hinterlegt und können dort leicht an den Verein angepasst werden:
+
+- **Risiko-Score-Konstanten:** Das Risiko-Fenster umfasst die letzten
+  `RISIKO_FENSTER_N = 5` stattgefundenen Gruppenstunden. Der Score (0.0 bis 1.0)
+  setzt sich je zur Hälfte aus dem Abfall der Anwesenheitsquote
+  (`RISIKO_GEWICHT_ABFALL = 0.5`) und der Dauer seit der letzten Anwesenheit
+  (`RISIKO_GEWICHT_ABWESENHEIT = 0.5`) zusammen; die Abwesenheits-Komponente
+  erreicht nach `RISIKO_ABWESENHEIT_MAX = 5` verpassten Stunden ihren Maximalwert.
+  Die Einstufung erfolgt über `RISIKO_SCHWELLE_NIEDRIG = 0.34` und
+  `RISIKO_SCHWELLE_HOCH = 0.67` in niedrig/mittel/hoch. Hat ein Mitglied keine
+  Stunden im aktiven Zeitraum, ist es nicht bewertbar: der Score ist dann
+  `None`, die Stufe lautet `"unbekannt"` und `bewertbar` ist `False`. So wird
+  dieser Fall klar vom echten Nullrisiko (Score 0.0, Stufe "niedrig") eines
+  treuen Mitglieds unterschieden.
+- **Faire Beteiligung / letzte N Stunden:** Pro Mitglied zählen nur die
+  Gruppenstunden, deren Datum im aktiven Zeitraum liegt (ab `eintrittsdatum`,
+  bis `austrittsdatum` bzw. bis zur letzten vorhandenen Stunde). Hat ein
+  Mitglied keine möglichen Stunden, ist die Quote `None` (nicht bewertbar) statt
+  fälschlich 0 %. Der Risiko-Score betrachtet nur die letzten
+  `RISIKO_FENSTER_N` dieser aktiven Stunden gegen die davorliegenden.
+- **`only_active_members`-Verhalten:** Ist `analysis.only_active_members` in der
+  `config.yaml` auf `true` gesetzt, werden ausgeschiedene Mitglieder (Feld
+  `ausgeschieden` oder ein vergangenes `austrittsdatum`) aus den
+  **mitgliederbezogenen** Auswertungen ausgenommen (Top/Flop-Anwesenheit, faire
+  Beteiligung, Risiko-Score, Lager-Korrelation, Pünktlichkeit). Die
+  **stundenbasierten** Auswertungen (Saisonalität, Thema-Ranking) bleiben
+  unberührt, und die Gesamtkennzahlen weisen aktive und gesamte Mitgliederzahl
+  ohnehin getrennt aus.
 
 ## Konfiguration
 
