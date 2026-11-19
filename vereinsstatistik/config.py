@@ -20,8 +20,30 @@ from pydantic import BaseModel, Field
 
 # Projektwurzel = eine Ebene über diesem Package.
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = ROOT / "config.yaml"
-ENV_PATH = ROOT / ".env"
+
+# Verzeichnis für config.yaml und .env. Standardmäßig die Projektwurzel (lokale
+# Entwicklung). In der TrueNAS-App-Variante ohne Shell wird ein persistentes
+# Host-Verzeichnis per Umgebungsvariable VEREINSSTATISTIK_CONFIG_DIR gesetzt,
+# in das die Web-UI die config.yaml selbst anlegt. Abwärtskompatibel: ist die
+# Variable nicht gesetzt oder leer, bleibt alles wie bisher.
+_CONFIG_DIR_ENV = "VEREINSSTATISTIK_CONFIG_DIR"
+
+
+def _config_dir() -> Path:
+    """Das Verzeichnis für config.yaml/.env bestimmen (Env-Variable oder ROOT)."""
+    override = os.environ.get(_CONFIG_DIR_ENV)
+    if override:
+        return Path(override)
+    return ROOT
+
+
+CONFIG_DIR = _config_dir()
+CONFIG_PATH = CONFIG_DIR / "config.yaml"
+ENV_PATH = CONFIG_DIR / ".env"
+
+# Referenz-Vorlage im Image/Repo, aus der beim ersten Start eine fehlende
+# config.yaml erzeugt wird (siehe ensure_config_initialized).
+EXAMPLE_CONFIG_PATH = ROOT / "config.example.yaml"
 
 DEFAULT_API_VERSION = "2025-09-03"
 
@@ -127,6 +149,40 @@ def save_config(cfg: Config, path: Path = CONFIG_PATH) -> None:
         yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )
+
+
+def ensure_config_initialized(
+    config_path: Path = CONFIG_PATH,
+    example_path: Path = EXAMPLE_CONFIG_PATH,
+) -> bool:
+    """Beim App-Start eine fehlende config.yaml aus der Vorlage erzeugen.
+
+    Gedacht für die reine TrueNAS-App-Variante ohne Shell: Dort existiert beim
+    ersten Start keine config.yaml, weil der Nutzer nie eine Konsole öffnet. Ist
+    an CONFIG_PATH noch keine Datei vorhanden, wird sie aus
+    ``config.example.yaml`` kopiert; die Web-UI befüllt sie anschließend.
+
+    Idempotent und sicher: Eine bereits existierende config.yaml wird NIEMALS
+    überschrieben. Fehlt auch die Vorlage, wird eine minimale Default-Struktur
+    geschrieben, damit die Web-UI in jedem Fall starten kann. Das Zielverzeichnis
+    wird bei Bedarf angelegt.
+
+    Rückgabe: True, wenn eine Datei neu erzeugt wurde, sonst False.
+    """
+    if config_path.exists():
+        return False
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if example_path.exists():
+        inhalt = example_path.read_text(encoding="utf-8")
+    else:
+        inhalt = yaml.safe_dump(
+            _default_config_dict(), sort_keys=False, allow_unicode=True
+        )
+
+    config_path.write_text(inhalt, encoding="utf-8")
+    return True
 
 
 def save_token(token: str, path: Path = ENV_PATH) -> None:

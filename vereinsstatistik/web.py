@@ -12,6 +12,7 @@ Start:  python -m vereinsstatistik.web   ->  http://localhost:8000
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
@@ -19,13 +20,30 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from .config import load_config, save_config, save_token
+from . import sync as sync_modul
+from .analysis import analyze
+from .config import ensure_config_initialized, load_config, save_config, save_token
+from .fetch import fetch_all
 from .inspector import inspect
 from .notion_client import NotionClient, NotionError
+from .sync import SyncError
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
-app = FastAPI(title="Vereinsstatistik — Konfiguration")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Beim Start eine fehlende config.yaml aus der Vorlage anlegen.
+
+    Nötig für die reine TrueNAS-App-Variante, in der der Nutzer nie eine Shell
+    öffnet und daher keine config.yaml anlegen kann. Idempotent; eine
+    bestehende Datei wird nicht angetastet.
+    """
+    ensure_config_initialized()
+    yield
+
+
+app = FastAPI(title="Vereinsstatistik — Konfiguration", lifespan=lifespan)
 
 
 def _client():
@@ -124,6 +142,58 @@ async def save_configuration(request: Request):
 
     save_config(cfg)
     return {"ok": True}
+
+
+@app.post("/api/sync")
+def api_sync():
+    """Einen kompletten Sync per Klick auslösen: fetch -> analyze -> PostgreSQL.
+
+    Serverseitiger Ablauf (synchron, für dieses Tool ausreichend; die UI zeigt
+    währenddessen "läuft…"):
+
+      1. Konfiguration laden und Notion-Client bauen (wirft NotionError ohne
+         Token).
+      2. Alle drei Notion-Datenbanken abrufen (``fetch_all``).
+      3. Kennzahlen berechnen (``analyze``).
+      4. Datenbankschema idempotent anlegen (``sync.init_db``), damit auch der
+         allererste Klick ohne vorher angelegtes Schema funktioniert.
+      5. Report als neuen Lauf nach PostgreSQL schreiben (``sync.write_report``).
+
+    Fehler werden als ``{"ok": false, "error": "..."}`` mit HTTP 400 und
+    verständlicher deutscher Meldung zurückgegeben (NotionError, SyncError).
+    """
+    try:
+        cfg, client = _client()
+        with client:
+            daten = fetch_all(cfg, client)
+        report = analyze(daten, cfg)
+
+        verbindung = sync_modul.connect(cfg)
+        try:
+            sync_modul.init_db(cfg, conn=verbindung)
+            run_id = sync_modul.write_report(report, cfg, conn=verbindung)
+        finally:
+            verbindung.close()
+
+        meta = daten.get("_meta") or {}
+        top_flop = report.get("top_flop_anwesenheit") or []
+        top1 = top_flop[0] if top_flop else None
+        flop1 = top_flop[-1] if top_flop else None
+
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "zusammenfassung": {
+                "anzahl_mitglieder": meta.get("mitglieder"),
+                "anzahl_gruppenstunden": meta.get("gruppenstunden"),
+                "anzahl_lager": meta.get("lager"),
+                "top_1": top1,
+                "flop_1": flop1,
+                "run_id": run_id,
+            },
+        }
+    except (NotionError, SyncError) as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
 
 
 def main():
