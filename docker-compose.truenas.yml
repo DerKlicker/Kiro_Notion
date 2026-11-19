@@ -1,0 +1,163 @@
+# =============================================================================
+# Vereinsstatistik - Compose-Stack fuer die TrueNAS-SCALE-App (Phase 4)
+# =============================================================================
+# Diese Variante ist fuer den rein grafischen Weg gedacht: TrueNAS SCALE ->
+# Apps -> Discover Apps -> Custom App -> diese Datei einfuegen. Es wird NICHTS
+# gebaut und KEINE Shell benoetigt.
+#
+# Unterschiede zur lokalen docker-compose.yml:
+#   * app/etl-cron nutzen ein fertiges Image aus der GitHub Container Registry
+#     (image: ghcr.io/derklicker/kiro_notion:latest) statt build:. Die TrueNAS-
+#     Custom-App-Oberflaeche baut keine Images, sie zieht nur fertige.
+#   * Die config.yaml wird NICHT als Einzeldatei gemountet (die gibt es beim
+#     ersten Start noch nicht - kein Shell-Zugriff). Stattdessen wird ein
+#     persistentes VERZEICHNIS unter /app/config_dir eingehaengt; die App legt
+#     dort beim ersten Start selbst eine config.yaml aus der Vorlage an
+#     (VEREINSSTATISTIK_CONFIG_DIR, siehe config.py / ensure_config_initialized).
+#   * Das Grafana-Provisioning liegt im App-Image und wird beim Start in ein
+#     benanntes Volume kopiert, das Grafana liest - so ist KEIN geklontes Repo
+#     und kein Host-Pfad fuer das Provisioning noetig.
+#
+# Secrets (NOTION_TOKEN, PG_PASSWORD) und das Sync-Intervall werden in der
+# TrueNAS-App-Oberflaeche als Umgebungsvariablen eingetragen. Die ${...}-
+# Referenzen unten greifen diese Werte auf. Details: docs/TRUENAS-APP.md.
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL - dedizierte Datenbank nur fuer dieses Tool.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vereinsstatistik
+      POSTGRES_USER: verein
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      # Host-Pfad fuer die DB-Daten im TrueNAS-Formular setzen.
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verein -d vereinsstatistik"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vereinsstatistik
+
+  # ---------------------------------------------------------------------------
+  # App - Web-UI (Port 8000). Fertiges Image aus GHCR, kein Build.
+  # ---------------------------------------------------------------------------
+  app:
+    image: ghcr.io/derklicker/kiro_notion:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Secrets kommen aus der TrueNAS-App-Oberflaeche (Env-Variablen).
+      NOTION_TOKEN: ${NOTION_TOKEN}
+      PG_PASSWORD: ${PG_PASSWORD}
+      # Konfig-Verzeichnis: hier legt die Web-UI die config.yaml selbst an.
+      VEREINSSTATISTIK_CONFIG_DIR: /app/config_dir
+    volumes:
+      # Persistentes Konfig-Verzeichnis (config.yaml + .env). Host-Pfad im
+      # TrueNAS-Formular setzen. NICHT als Einzeldatei mounten.
+      - config-dir:/app/config_dir
+    ports:
+      - "8000:8000"
+    networks:
+      - vereinsstatistik
+
+  # ---------------------------------------------------------------------------
+  # ETL-Cron - periodischer Sync Notion -> PostgreSQL (gleiches GHCR-Image).
+  # Legt beim Start das Schema an (idempotent) und synchronisiert dann im
+  # Intervall SYNC_INTERVALL_SEKUNDEN (Standard 86400 = taeglich).
+  # ---------------------------------------------------------------------------
+  etl-cron:
+    image: ghcr.io/derklicker/kiro_notion:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NOTION_TOKEN: ${NOTION_TOKEN}
+      PG_PASSWORD: ${PG_PASSWORD}
+      SYNC_INTERVALL_SEKUNDEN: ${SYNC_INTERVALL_SEKUNDEN:-86400}
+      VEREINSSTATISTIK_CONFIG_DIR: /app/config_dir
+    volumes:
+      # Gleiches Konfig-Verzeichnis wie app (read-only genuegt hier).
+      - config-dir:/app/config_dir:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        python -m vereinsstatistik.cli init-db;
+        while true; do
+          python -m vereinsstatistik.cli sync || true;
+          sleep "${SYNC_INTERVALL_SEKUNDEN:-86400}";
+        done
+    networks:
+      - vereinsstatistik
+
+  # ---------------------------------------------------------------------------
+  # Grafana - Visualisierung (Port 3000).
+  # Das Provisioning (Datenquelle + Dashboard) liegt im App-Image unter
+  # /app/vereinsstatistik/../grafana. Ein kleiner Init-Container kopiert es in
+  # ein benanntes Volume, das Grafana als Provisioning-Verzeichnis liest. So ist
+  # KEIN Host-Pfad und KEINE Shell noetig.
+  # ---------------------------------------------------------------------------
+  grafana-provisioning-init:
+    image: ghcr.io/derklicker/kiro_notion:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    # Provisioning aus dem Image in das gemeinsame Volume spiegeln.
+    command:
+      - >
+        mkdir -p /provisioning &&
+        cp -r /app/grafana/provisioning/. /provisioning/
+    volumes:
+      - grafana-provisioning:/provisioning
+    networks:
+      - vereinsstatistik
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      grafana-provisioning-init:
+        condition: service_completed_successfully
+    environment:
+      # PostgreSQL-Passwort auch fuer die Grafana-Datenquelle verfuegbar machen.
+      PG_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      # Host-Pfad fuer die Grafana-Daten im TrueNAS-Formular setzen.
+      - grafana-data:/var/lib/grafana
+      # Provisioning aus dem Init-Container (Datenquelle + Dashboard).
+      - grafana-provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - vereinsstatistik
+
+# -----------------------------------------------------------------------------
+# Persistente benannte Volumes. In der TrueNAS-App-Oberflaeche koennen die
+# Datenpfade (postgres-data, grafana-data, config-dir) auf Host-Pfade gelegt
+# werden, damit sie Updates ueberdauern.
+# -----------------------------------------------------------------------------
+volumes:
+  postgres-data:
+  grafana-data:
+  config-dir:
+  grafana-provisioning:
+
+# -----------------------------------------------------------------------------
+# Gemeinsames Bridge-Netzwerk fuer alle Dienste.
+# -----------------------------------------------------------------------------
+networks:
+  vereinsstatistik:
+    driver: bridge
