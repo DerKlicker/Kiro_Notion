@@ -13,11 +13,13 @@ import argparse
 import json
 import sys
 
+from . import sync
 from .analysis import analyze, load_data
 from .config import load_config
 from .fetch import fetch_all
 from .inspector import inspect
 from .notion_client import NotionClient, NotionError
+from .sync import SyncError
 
 
 def _client(cfg) -> NotionClient:
@@ -203,6 +205,58 @@ def cmd_analyze(args) -> int:
     return 0
 
 
+def cmd_init_db(args) -> int:
+    """Das PostgreSQL-Schema anlegen (idempotent)."""
+    cfg = load_config()
+    try:
+        sync.init_db(cfg)
+    except SyncError as exc:
+        print(f"FEHLER: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Schema initialisiert in Datenbank {cfg.postgres.database}, "
+        f"Schema {cfg.postgres.schema_}."
+    )
+    return 0
+
+
+def cmd_sync(args) -> int:
+    """Kennzahlen berechnen und als Lauf nach PostgreSQL schreiben."""
+    cfg = load_config()
+
+    if args.in_path:
+        # Aus gespeichertem JSON laden - kein Notion-Abruf.
+        try:
+            data = load_data(args.in_path)
+        except (OSError, ValueError) as exc:
+            print(f"FEHLER: Daten konnten nicht geladen werden: {exc}", file=sys.stderr)
+            return 1
+    else:
+        # Live aus Notion abrufen, analog cmd_fetch.
+        try:
+            with _client(cfg) as client:
+                data = fetch_all(cfg, client)
+        except NotionError as exc:
+            print(f"FEHLER: {exc}", file=sys.stderr)
+            return 1
+
+    report = analyze(data, cfg)
+
+    try:
+        if args.init_db:
+            sync.init_db(cfg)
+        run_id = sync.write_report(report, cfg)
+    except SyncError as exc:
+        print(f"FEHLER: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        f"Lauf gespeichert (run_id={run_id}) nach PostgreSQL "
+        f"{cfg.postgres.database}@{cfg.postgres.host}:{cfg.postgres.port}."
+    )
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="vereinsstatistik")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -222,12 +276,33 @@ def main(argv=None) -> int:
     )
     p_analyze.add_argument("--out", default=None, help="Pfad für JSON-Report")
 
+    sub.add_parser("init-db", help="PostgreSQL-Schema anlegen (idempotent)")
+
+    p_sync = sub.add_parser(
+        "sync",
+        help="Kennzahlen berechnen und als Lauf nach PostgreSQL schreiben",
+    )
+    p_sync.add_argument(
+        "--in",
+        dest="in_path",
+        default=None,
+        help="Pfad zu zuvor per fetch gespeicherter JSON (ohne Notion-Abruf)",
+    )
+    p_sync.add_argument(
+        "--init-db",
+        dest="init_db",
+        action="store_true",
+        help="Vor dem Schreiben das Schema initialisieren",
+    )
+
     args = parser.parse_args(argv)
     return {
         "test-connection": cmd_test_connection,
         "inspect": cmd_inspect,
         "fetch": cmd_fetch,
         "analyze": cmd_analyze,
+        "init-db": cmd_init_db,
+        "sync": cmd_sync,
     }[args.command](args)
 
 

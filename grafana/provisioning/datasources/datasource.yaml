@@ -1,0 +1,35 @@
+# =============================================================================
+# Grafana-Datenquelle (Provisioning) - PostgreSQL der Vereinsstatistik.
+# =============================================================================
+# Diese Datei wird beim Start von Grafana automatisch eingelesen (gemountet
+# nach /etc/grafana/provisioning/datasources, siehe docker-compose.yml).
+#
+# Die Datenquelle zeigt auf den Compose-Service "postgres" (interner Port
+# 5432). Datenbank und Benutzer entsprechen den Defaults aus config.yaml
+# (vereinsstatistik/verein). Das Passwort wird NICHT im Klartext hinterlegt,
+# sondern ueber die Umgebungsvariable ${PG_PASSWORD} in secureJsonData
+# eingesetzt (Grafana loest $VARIABLEN aus der Umgebung auf; der grafana-
+# Dienst reicht PG_PASSWORD aus der .env durch).
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: Vereinsstatistik PostgreSQL
+    uid: vereinsstatistik-postgres
+    type: postgres
+    access: proxy
+    # Service-Name im Compose-Netzwerk, nicht localhost.
+    url: postgres:5432
+    database: vereinsstatistik
+    user: verein
+    isDefault: true
+    editable: false
+    secureJsonData:
+      # Passwort aus der Umgebung des grafana-Dienstes (.env -> ${PG_PASSWORD}).
+      password: ${PG_PASSWORD}
+    jsonData:
+      # Internes Compose-Netz, daher keine TLS-Verschluesselung noetig.
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
