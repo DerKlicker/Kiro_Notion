@@ -134,6 +134,21 @@
       </div>
       <div id="save-status" class="status"></div>
     </section>
+
+    <!-- 5. Synchronisieren -------------------------------------------------->
+    <section class="card">
+      <h2>5. Synchronisieren</h2>
+      <p class="hint">Holt die aktuellen Daten aus Notion, berechnet die
+         Kennzahlen und schreibt sie nach PostgreSQL — ein neuer Lauf für
+         Grafana. Praktisch für den allerersten Lauf und für Ad-hoc-Auswertungen,
+         ganz ohne Shell. Der Vorgang läuft synchron; bei vielen Daten kann er
+         einen Moment dauern.</p>
+      <div class="row">
+        <button id="sync-btn" onclick="runSync()">Jetzt synchronisieren</button>
+      </div>
+      <div id="sync-status" class="status"></div>
+      <div id="sync-result" class="status"></div>
+    </section>
   </main>
 
   <script>
@@ -245,6 +260,37 @@
       if (!silent) setStatus("save-status",
         j.ok ? "Konfiguration gespeichert (config.yaml)." : j.error, j.ok);
       return j.ok;
+    }
+
+    async function runSync() {
+      const btn = document.getElementById("sync-btn");
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "läuft …";
+      setStatus("sync-result", "");
+      setStatus("sync-status", "Synchronisiere — Daten werden aus Notion geholt, "
+        + "ausgewertet und nach PostgreSQL geschrieben …");
+      try {
+        const r = await fetch("/api/sync", { method: "POST" });
+        const j = await r.json();
+        if (!j.ok) { setStatus("sync-status", j.error, false); return; }
+        const z = j.zusammenfassung || {};
+        setStatus("sync-status",
+          `Sync erfolgreich — Lauf #${j.run_id} gespeichert.`, true);
+        const teile = [
+          `Mitglieder: ${z.anzahl_mitglieder ?? "?"}`,
+          `Gruppenstunden: ${z.anzahl_gruppenstunden ?? "?"}`,
+          `Lager: ${z.anzahl_lager ?? "?"}`,
+        ];
+        if (z.top_1) teile.push(`Top-1: ${z.top_1.name} (${z.top_1.anwesend_absolut}×)`);
+        if (z.flop_1) teile.push(`Flop-1: ${z.flop_1.name} (${z.flop_1.anwesend_absolut}×)`);
+        setStatus("sync-result", teile.join("  ·  "), true);
+      } catch (e) {
+        setStatus("sync-status", "Netzwerkfehler beim Synchronisieren.", false);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
     }
   </script>
 </body>

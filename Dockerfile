@@ -17,7 +17,16 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Arbeitsverzeichnis. Hierher wird spaeter config.yaml gemountet (/app/config.yaml).
+# Hinweis Konfig-Pfad: Standardmaessig liest die App config.yaml/.env aus /app
+# (klassischer Bind-Mount in docker-compose.yml). In der reinen TrueNAS-App-
+# Variante wird stattdessen die Umgebungsvariable VEREINSSTATISTIK_CONFIG_DIR
+# auf ein persistentes Host-Verzeichnis gesetzt (siehe docker-compose.truenas.yml);
+# die Web-UI legt dort beim ersten Start eine fehlende config.yaml selbst an.
+# Die Variable wird bewusst NICHT im Image gesetzt, damit die klassische Variante
+# (Bind-Mount auf /app/config.yaml) unveraendert funktioniert.
+
+# Arbeitsverzeichnis. Hierher wird in der klassischen Variante config.yaml
+# gemountet (/app/config.yaml).
 WORKDIR /app
 
 # Abhaengigkeiten zuerst - nur requirements.txt kopieren, damit der pip-Layer
@@ -31,6 +40,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY vereinsstatistik/ ./vereinsstatistik/
 COPY config.example.yaml ./config.example.yaml
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+
+# Grafana-Provisioning (Datenquelle + Dashboard) ins Image legen. Die reine
+# TrueNAS-App-Variante (docker-compose.truenas.yml) spiegelt es von hier in ein
+# Volume, das Grafana liest - so braucht es kein geklontes Repo und keinen
+# Host-Pfad fuer das Provisioning.
+COPY grafana/ ./grafana/
 
 # Nicht-Root-Benutzer anlegen, Einstiegsskript ausfuehrbar machen und
 # Eigentum uebertragen. So laeuft der Prozess ohne Root-Rechte; das

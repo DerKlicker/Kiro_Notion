@@ -20,6 +20,9 @@ du pflegst alles direkt über die `config.yaml` (praktisch auf TrueNAS).
 - [x] **Phase 1** — Notion-Anbindung, konfigurierbares Mapping, Web-UI, Struktur-Inspektor
 - [x] **Phase 2** — Kennzahlen-Logik (Anwesenheit, relative Beteiligung, Risiko, Saisonalität …)
 - [x] **Phase 3** — PostgreSQL-Schema + ETL-Sync + Grafana-Dashboards (TrueNAS)
+- [x] **Phase 4** — TrueNAS-App ohne Shell: GHCR-Image, Registry-Compose,
+  Selbstinitialisierung der `config.yaml` und „Jetzt synchronisieren"-Button in
+  der Web-UI
 
 ## Schnellstart (lokal)
 
@@ -169,6 +172,33 @@ Die vollstaendige Schritt-fuer-Schritt-Anleitung steht in
    in der `config.yaml` (plus `PG_PASSWORD` in der `.env`) ebenfalls nutzbar;
    dann den `postgres`-Dienst in der `docker-compose.yml` weglassen und den
    `host` entsprechend setzen.
+
+## Phase 4 — Als TrueNAS-App (ohne Shell)
+
+Phase 4 macht den Stack App-Store-tauglich für TrueNAS SCALE, **ohne dass du je
+eine Shell öffnen musst**:
+
+- **Fertiges Image aus GHCR:** `app` und `etl-cron` ziehen das Image
+  `ghcr.io/derklicker/kiro_notion:latest` statt es lokal zu bauen. Das Image
+  enthält nur Programmcode und `config.example.yaml` — **keine** Secrets, keine
+  `config.yaml`, keine `.env`, keine Mitgliederdaten (siehe `.dockerignore`),
+  darf also öffentlich liegen. Gebaut und veröffentlicht wird es per
+  GitHub-Actions-Workflow (`.github/workflows/docker-publish.yml`).
+- **Registry-Compose:** [`docker-compose.truenas.yml`](docker-compose.truenas.yml)
+  ist die App-Variante zum Einfügen in eine TrueNAS **Custom App**. Statt einer
+  vorab angelegten `config.yaml` wird ein persistentes **Konfig-Verzeichnis**
+  eingehängt (`VEREINSSTATISTIK_CONFIG_DIR` → `/app/config_dir`); die Web-UI legt
+  die `config.yaml` beim ersten Start selbst aus der Vorlage an. Das
+  Grafana-Provisioning liegt im Image und wird per Init-Container bereitgestellt,
+  sodass kein geklontes Repo nötig ist.
+- **„Jetzt synchronisieren"-Button:** In der Web-UI (Port 8000) löst ein Klick
+  einen kompletten Sync aus (Notion abrufen → Kennzahlen berechnen → Schema
+  idempotent anlegen → nach PostgreSQL schreiben). So funktionieren der
+  allererste Lauf und Ad-hoc-Auswertungen ganz ohne Konsole.
+
+Die komplette Schritt-für-Schritt-Anleitung für den rein grafischen Weg steht in
+[docs/TRUENAS-APP.md](docs/TRUENAS-APP.md). Den klassischen Shell-/Build-Weg
+beschreibt weiterhin [docs/TRUENAS.md](docs/TRUENAS.md).
 
 ## Konfiguration
 
