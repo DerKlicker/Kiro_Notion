@@ -72,12 +72,25 @@ Konfiguration Neustarts und App-Updates überstehen. Namen sind Beispiele:
    > App-Image in dieses Volume — so ist das Dashboard ohne Shell und ohne
    > geklontes Repo sofort verfügbar.
 
-4. **Umgebungsvariablen** im TrueNAS-App-Formular setzen (werden in der
-   Compose-Datei über `${...}` referenziert):
-   - `NOTION_TOKEN` — dein Notion-Integration-Token.
-   - `PG_PASSWORD` — ein starkes, selbst gewähltes PostgreSQL-Passwort.
-   - `SYNC_INTERVALL_SEKUNDEN` — optional, Intervall des automatischen Syncs in
-     Sekunden (Standard `86400` = einmal täglich; z. B. `3600` = stündlich).
+4. **Secrets eintragen.** Wichtig: Die TrueNAS-Custom-App füllt die
+   `${...}`-Platzhalter in `docker-compose.truenas.yml` **nicht** aus dem
+   „Environment"-Formular. Bleiben `NOTION_TOKEN`/`PG_PASSWORD` dadurch leer,
+   startet PostgreSQL mit leerem Passwort und der Stack bricht ab
+   (`container ... postgres ... is unhealthy`).
+
+   **Deshalb für die Custom App die Datei
+   [`docker-compose.truenas-inline.yml`](../docker-compose.truenas-inline.yml)
+   verwenden** statt `docker-compose.truenas.yml`. Dort trägst du die Werte
+   direkt ins YAML ein (zwei Platzhalter, per „Alle ersetzen"):
+   - `HIER_DEIN_DB_PASSWORT` → ein starkes, selbst gewähltes PostgreSQL-Passwort
+     (an allen Stellen identisch).
+   - `HIER_DEIN_NOTION_TOKEN` → dein Notion-Integration-Token.
+   - Das Sync-Intervall steht direkt im YAML (`SYNC_INTERVALL_SEKUNDEN`,
+     Standard `86400` = täglich; `3600` = stündlich).
+
+   Die Datei `docker-compose.truenas.yml` mit `${...}` bleibt für Umgebungen,
+   die eine echte `.env` bereitstellen (z. B. der Shell-Weg in
+   [docs/TRUENAS.md](TRUENAS.md)).
 
 5. **Ports** (in der Compose-Datei vorgegeben, bei Bedarf im Formular anpassen):
    - `8000` → Web-UI (Konfiguration + „Jetzt synchronisieren").

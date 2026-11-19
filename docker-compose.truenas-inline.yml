@@ -1,0 +1,136 @@
+# =============================================================================
+# Vereinsstatistik - TrueNAS Custom App (Variante mit DIREKT eingetragenen
+# Secrets, OHNE ${...}-Platzhalter und OHNE .env-Datei)
+# =============================================================================
+# WARUM DIESE DATEI?
+# Die TrueNAS-Custom-App fuellt die ${...}-Compose-Platzhalter NICHT aus dem
+# "Environment"-Formular. Dadurch blieben NOTION_TOKEN und PG_PASSWORD leer,
+# PostgreSQL startete mit leerem Passwort und der Stack brach ab
+# ("container ... postgres ... is unhealthy"). Diese Variante traegt die Werte
+# direkt im YAML ein - das ist bei der Custom-App der zuverlaessige Weg.
+#
+# ----------------------------------------------------------------------------
+# DU MUSST NUR ZWEI WERTE ERSETZEN (jeweils an allen markierten Stellen):
+#
+#   1) HIER_DEIN_DB_PASSWORT   -> ein starkes, selbst gewaehltes Passwort.
+#                                 Kommt 4x vor (postgres, app, etl-cron, grafana).
+#   2) HIER_DEIN_NOTION_TOKEN  -> dein Notion-Integration-Token (ntn_...).
+#                                 Kommt 2x vor (app, etl-cron).
+#
+# Tipp: In einem Editor "Alle ersetzen" nutzen, dann erwischst du jede Stelle.
+# Das Passwort bei postgres MUSS identisch mit dem bei app/etl-cron/grafana sein.
+# ----------------------------------------------------------------------------
+# Das Image kommt aus GHCR (ghcr.io/derklicker/kiro_notion:latest) und enthaelt
+# NUR Programmcode - keine Secrets. Deine Werte bleiben in diesem YAML auf
+# deinem NAS. Siehe docs/TRUENAS-APP.md fuer die vollstaendige Anleitung.
+# =============================================================================
+
+services:
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vereinsstatistik
+      POSTGRES_USER: verein
+      # (1) DB-Passwort hier eintragen:
+      POSTGRES_PASSWORD: "HIER_DEIN_DB_PASSWORT"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verein -d vereinsstatistik"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vereinsstatistik
+
+  app:
+    image: ghcr.io/derklicker/kiro_notion:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # (2) Notion-Token hier eintragen:
+      NOTION_TOKEN: "HIER_DEIN_NOTION_TOKEN"
+      # (1) DB-Passwort hier eintragen (identisch mit postgres oben):
+      PG_PASSWORD: "HIER_DEIN_DB_PASSWORT"
+      VEREINSSTATISTIK_CONFIG_DIR: /app/config_dir
+    volumes:
+      - config-dir:/app/config_dir
+    ports:
+      - "8000:8000"
+    networks:
+      - vereinsstatistik
+
+  etl-cron:
+    image: ghcr.io/derklicker/kiro_notion:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # (2) Notion-Token hier eintragen:
+      NOTION_TOKEN: "HIER_DEIN_NOTION_TOKEN"
+      # (1) DB-Passwort hier eintragen (identisch mit postgres oben):
+      PG_PASSWORD: "HIER_DEIN_DB_PASSWORT"
+      # Sync-Intervall in Sekunden (86400 = taeglich, 3600 = stuendlich):
+      SYNC_INTERVALL_SEKUNDEN: "86400"
+      VEREINSSTATISTIK_CONFIG_DIR: /app/config_dir
+    volumes:
+      - config-dir:/app/config_dir:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        python -m vereinsstatistik.cli init-db;
+        while true; do
+          python -m vereinsstatistik.cli sync || true;
+          sleep "$${SYNC_INTERVALL_SEKUNDEN:-86400}";
+        done
+    networks:
+      - vereinsstatistik
+
+  grafana-provisioning-init:
+    image: ghcr.io/derklicker/kiro_notion:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        mkdir -p /provisioning &&
+        cp -r /app/grafana/provisioning/. /provisioning/
+    volumes:
+      - grafana-provisioning:/provisioning
+    networks:
+      - vereinsstatistik
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      grafana-provisioning-init:
+        condition: service_completed_successfully
+    environment:
+      # (1) DB-Passwort hier eintragen (identisch mit postgres oben):
+      PG_PASSWORD: "HIER_DEIN_DB_PASSWORT"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - grafana-provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - vereinsstatistik
+
+volumes:
+  postgres-data:
+  grafana-data:
+  config-dir:
+  grafana-provisioning:
+
+networks:
+  vereinsstatistik:
+    driver: bridge
