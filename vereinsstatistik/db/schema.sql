@@ -73,17 +73,13 @@ CREATE TABLE IF NOT EXISTS {schema}.kennzahl_saisonalitaet_monat (
 );
 CREATE INDEX IF NOT EXISTS idx_saison_monat_run ON {schema}.kennzahl_saisonalitaet_monat (run_id);
 
--- Kennzahl 4b: Saisonalitaet pro Wochentag (0-6, Montag=0).
-CREATE TABLE IF NOT EXISTS {schema}.kennzahl_saisonalitaet_wochentag (
-    run_id          BIGINT NOT NULL REFERENCES {schema}.laeufe (run_id) ON DELETE CASCADE,
-    wochentag       INTEGER,
-    anzahl_stunden  INTEGER,
-    summe_anwesend  INTEGER,
-    schnitt_anwesend NUMERIC
-);
-CREATE INDEX IF NOT EXISTS idx_saison_wtag_run ON {schema}.kennzahl_saisonalitaet_wochentag (run_id);
+-- Hinweis: Eine Tabelle fuer die Saisonalitaet pro Wochentag gibt es bewusst
+-- nicht (mehr). Gruppenstunden finden immer samstags statt, nur das Sommerlager
+-- faellt auf andere Tage - eine Wochentags-Auswertung waere ohne Aussagekraft.
 
--- Kennzahl 5: Thema-Ranking (Durchschnittliche Anwesenheit je Thema).
+-- Kennzahl 5: Thema-Ranking (Durchschnittliche Anwesenheit je Thema). thema_key
+-- traegt im Normalfall den lesbaren Themennamen (Rollup "Grafana_Name");
+-- thema_quelle haelt die Herkunft fest ('name' | 'relation' | 'titel').
 CREATE TABLE IF NOT EXISTS {schema}.kennzahl_thema_ranking (
     run_id          BIGINT NOT NULL REFERENCES {schema}.laeufe (run_id) ON DELETE CASCADE,
     thema_key       TEXT,

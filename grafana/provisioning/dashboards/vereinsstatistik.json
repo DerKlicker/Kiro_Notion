@@ -329,7 +329,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 36 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 36 },
       "id": 9,
       "options": {
         "barRadius": 0,
@@ -351,39 +351,6 @@
         }
       ],
       "title": "Saisonalitaet pro Monat (Schnitt anwesend)",
-      "type": "barchart"
-    },
-    {
-      "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "axisLabel": "", "fillOpacity": 80, "lineWidth": 1 }
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 36 },
-      "id": 10,
-      "options": {
-        "barRadius": 0,
-        "barWidth": 0.8,
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
-        "orientation": "auto",
-        "showValue": "auto",
-        "tooltip": { "mode": "single", "sort": "none" },
-        "xTickLabelRotation": 0
-      },
-      "pluginVersion": "11.2.0",
-      "targets": [
-        {
-          "datasource": { "type": "postgres", "uid": "vereinsstatistik-postgres" },
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT CASE wochentag WHEN 0 THEN 'Montag' WHEN 1 THEN 'Dienstag' WHEN 2 THEN 'Mittwoch' WHEN 3 THEN 'Donnerstag' WHEN 4 THEN 'Freitag' WHEN 5 THEN 'Samstag' WHEN 6 THEN 'Sonntag' ELSE wochentag::text END AS \"Wochentag\", schnitt_anwesend AS \"Schnitt anwesend\" FROM public.kennzahl_saisonalitaet_wochentag WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY wochentag ASC;",
-          "refId": "A"
-        }
-      ],
-      "title": "Saisonalitaet pro Wochentag (Schnitt anwesend)",
       "type": "barchart"
     },
     {

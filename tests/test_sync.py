@@ -220,6 +220,38 @@ def test_write_report_nutzt_konfiguriertes_schema(report):
     assert any("statistik.laeufe" in c[1] for c in conn.calls)
 
 
+def test_write_report_keine_wochentag_tabelle(report):
+    # Die Saisonalitaet pro Wochentag wurde entfernt - es darf kein INSERT in
+    # kennzahl_saisonalitaet_wochentag mehr erzeugt werden.
+    conn = FakeConnection()
+    sync.write_report(report, FakeConfig(), conn=conn)
+
+    assert not any("kennzahl_saisonalitaet_wochentag" in c[1] for c in conn.calls)
+    # Die Monats-Tabelle wird weiterhin beschrieben.
+    assert any("kennzahl_saisonalitaet_monat" in c[1] for c in conn.calls)
+
+
+def test_write_report_thema_ranking_mit_lesbarem_namen():
+    # Thema-Ranking mit Rollup-Name "Grafana_Name" (Feld thema_name): der
+    # lesbare Name landet als thema_key, die Quelle ist 'name'.
+    daten = {
+        "mitglieder": [{"_id": "m1", "name": "Anna", "eintrittsdatum": "2024-01-01"}],
+        "gruppenstunden": [
+            {"_id": "g1", "datum": "2024-01-05", "titel": "x", "teilnehmer": ["m1"], "thema_name": ["Lagerfeuer"]},
+        ],
+        "lager": [],
+    }
+    conn = FakeConnection()
+    sync.write_report(analyze(daten, cfg=None), FakeConfig(), conn=conn)
+
+    tr = _calls_fuer_tabelle(conn.calls, "kennzahl_thema_ranking")
+    assert len(tr) == 1 and tr[0][0] == "executemany"
+    # Zeile: (run_id, thema_key, thema_quelle, anzahl_stunden, schnitt_anwesend).
+    zeile = tr[0][2][0]
+    assert zeile[1] == "Lagerfeuer"
+    assert zeile[2] == "name"
+
+
 # ---------------------------------------------------------------------------
 # write_report / connect: Fehlerpfade
 # ---------------------------------------------------------------------------

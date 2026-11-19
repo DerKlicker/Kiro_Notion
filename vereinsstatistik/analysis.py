@@ -168,13 +168,70 @@ def _stunden_jahr(stunde: Dict[str, Any]) -> Optional[int]:
     return d.year if d else None
 
 
-def _aktive_mitglieder(
-    mitglieder: List[Dict[str, Any]], only_active: bool, stichtag: Optional[date] = None
+# Wert, den das Feld ``bereich_stamm`` (Notion-Select "Bereich/Stamm") haben
+# muss, damit ein Mitglied in die Gruppenstunden-Statistik einfliesst. Andere
+# Werte (z. B. "Intern Stamm") oder leere Werte schliessen das Mitglied aus.
+BEREICH_STAMM_GRUPPENSTUNDE = "Gruppenstunde"
+
+
+def _bereich_stamm_wert(m: Dict[str, Any]) -> Optional[str]:
+    """Den ``bereich_stamm``-Wert eines Mitglieds als getrimmten String liefern.
+
+    Notion-Select liefert einen String; eine (mehrfach belegbare) Auswahl kann
+    als Liste ankommen. Beides wird robust behandelt. Fehlt der Wert oder ist er
+    leer, wird ``None`` zurueckgegeben.
+    """
+    wert = m.get("bereich_stamm")
+    if isinstance(wert, list):
+        werte = [str(w).strip() for w in wert if w is not None and str(w).strip()]
+        return werte[0] if werte else None
+    if isinstance(wert, str):
+        wert = wert.strip()
+        return wert or None
+    return None
+
+
+def mitglieder_fuer_statistik(
+    mitglieder: List[Dict[str, Any]], stichtag: Optional[date] = None
 ) -> List[Dict[str, Any]]:
-    """Mitgliederliste ggf. auf nicht-ausgeschiedene filtern."""
-    if not only_active:
-        return list(mitglieder or [])
-    return [m for m in (mitglieder or []) if not ist_ausgeschieden(m, stichtag)]
+    """Mitgliederliste fuer die Gruppenstunden-Statistik filtern.
+
+    Zwei fachliche Filter werden angewendet:
+
+    * ``ausgeschieden``: Mitglieder, die ausgeschieden sind (Feld
+      ``ausgeschieden`` bzw. ein Austrittsdatum in der Vergangenheit), werden
+      IMMER ausgeschlossen. Dieser Filter greift unabhaengig von der
+      Datenpflege.
+    * ``bereich_stamm`` (Notion-Select "Bereich/Stamm"): Nur Mitglieder mit dem
+      Wert ``"Gruppenstunde"`` zaehlen; andere oder leere Werte werden
+      ausgeschlossen.
+
+    Defensiver Fallback fuer den Bereich/Stamm-Filter: Ist das Feld bei KEINEM
+    (noch) nicht ausgeschiedenen Mitglied gepflegt (alle Werte leer/None, z. B.
+    weil die Spalte in Notion noch nicht gefuellt oder nicht gemappt ist), wird
+    der Bereich/Stamm-Filter komplett uebersprungen. So wird vermieden, dass
+    versehentlich die gesamte Mitgliederliste herausfaellt. Sobald mindestens
+    ein Mitglied einen Bereich/Stamm-Wert traegt, greift der Filter normal.
+    Der ``ausgeschieden``-Filter bleibt davon unberuehrt und greift immer.
+    """
+    # Schritt 1: Ausgeschiedene immer entfernen.
+    nicht_ausgeschieden = [
+        m for m in (mitglieder or []) if not ist_ausgeschieden(m, stichtag)
+    ]
+
+    # Schritt 2: Bereich/Stamm-Filter, aber nur wenn die Spalte gepflegt ist.
+    hat_bereich_werte = any(
+        _bereich_stamm_wert(m) is not None for m in nicht_ausgeschieden
+    )
+    if not hat_bereich_werte:
+        # Fallback: Spalte (noch) nicht gepflegt/gemappt -> nicht filtern.
+        return nicht_ausgeschieden
+
+    return [
+        m
+        for m in nicht_ausgeschieden
+        if _bereich_stamm_wert(m) == BEREICH_STAMM_GRUPPENSTUNDE
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -434,10 +491,14 @@ def saisonalitaet(
     gruppenstunden: List[Dict[str, Any]],
     bundesland: str = "",
 ) -> Dict[str, Any]:
-    """Besucherzahlen pro Monat (1-12) und pro Wochentag (0-6, Montag=0).
+    """Besucherzahlen pro Monat (1-12).
 
     Je Gruppenstunde zaehlt die Anzahl der Teilnehmer (len(teilnehmer)).
-    Aggregiert wird nach Monat und nach Wochentag des Datums.
+    Aggregiert wird nach Monat des Datums.
+
+    Eine Auswertung pro Wochentag gibt es bewusst NICHT (mehr): Gruppenstunden
+    finden immer samstags statt, nur das Sommerlager faellt auf andere Tage -
+    eine Wochentags-Verteilung waere daher ohne Aussagekraft.
 
     Ferien-Korrelation: Nur wenn ein ``bundesland`` gesetzt ist UND Feriendaten
     verfuegbar waeren, wuerde eine Korrelation versucht. Da im Projekt (noch)
@@ -447,13 +508,10 @@ def saisonalitaet(
 
     Rueckgabe:
     {pro_monat: [{monat, anzahl_stunden, summe_anwesend, schnitt_anwesend}],
-     pro_wochentag: [... analog mit 'wochentag'],
      ferien_korrelation: None}
     """
     monat_summe: Dict[int, int] = {}
     monat_count: Dict[int, int] = {}
-    wtag_summe: Dict[int, int] = {}
-    wtag_count: Dict[int, int] = {}
 
     for s in gruppenstunden or []:
         d = parse_date(s.get("datum"))
@@ -462,9 +520,6 @@ def saisonalitaet(
         anwesend = len(_teilnehmer_ids(s))
         monat_summe[d.month] = monat_summe.get(d.month, 0) + anwesend
         monat_count[d.month] = monat_count.get(d.month, 0) + 1
-        wtag = d.weekday()
-        wtag_summe[wtag] = wtag_summe.get(wtag, 0) + anwesend
-        wtag_count[wtag] = wtag_count.get(wtag, 0) + 1
 
     pro_monat = [
         {
@@ -475,22 +530,12 @@ def saisonalitaet(
         }
         for monat in sorted(monat_count)
     ]
-    pro_wochentag = [
-        {
-            "wochentag": wtag,
-            "anzahl_stunden": wtag_count[wtag],
-            "summe_anwesend": wtag_summe[wtag],
-            "schnitt_anwesend": round(wtag_summe[wtag] / wtag_count[wtag], 2),
-        }
-        for wtag in sorted(wtag_count)
-    ]
 
     # Ferien-Korrelation mangels Feriendaten sauber ueberspringen.
     ferien_korrelation = None
 
     return {
         "pro_monat": pro_monat,
-        "pro_wochentag": pro_wochentag,
         "ferien_korrelation": ferien_korrelation,
     }
 
@@ -499,18 +544,42 @@ def saisonalitaet(
 # KENNZAHL 5 - Thema-Ranking
 # ---------------------------------------------------------------------------
 
+def _thema_namen(stunde: Dict[str, Any]) -> List[str]:
+    """Lesbare Themennamen aus dem Rollup-Feld ``thema_name`` extrahieren.
+
+    Das Feld ``thema_name`` entsteht aus dem Notion-Rollup "Grafana_Name", das
+    den Titel des verknuepften Themas enthaelt. Ein Rollup ueber eine Relation
+    liefert in der Regel eine Liste (ein Eintrag je verknuepftem Thema), kann
+    aber auch ein einzelner String sein. Beides wird robust zu einer Liste
+    nicht-leerer, getrimmter Namen normalisiert. Fehlt das Feld oder ist es
+    leer, ist die Liste leer.
+    """
+    namen: List[str] = []
+    for roh in _as_list(stunde.get("thema_name")):
+        if isinstance(roh, str):
+            text = roh.strip()
+            if text:
+                namen.append(text)
+    return namen
+
+
 def thema_ranking(gruppenstunden: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Durchschnittliche Anwesenheit pro Thema.
 
-    Primaer wird nach ``thema_relation`` (Liste von Page-IDs einer Themen-DB)
-    gruppiert. Hat eine Stunde mehrere Themen-IDs, zaehlt sie fuer jede ID
-    einzeln (jede ID erhaelt die Teilnehmerzahl dieser Stunde). Ist
-    ``thema_relation`` leer oder None, wird auf das Textfeld ``titel``
-    zurueckgegriffen. Themen-Namen der Relation muessen nicht aufloesbar sein -
-    die Page-ID dient dann als Schluessel.
+    Primaer wird nach dem lesbaren Themennamen aus dem Rollup-Feld
+    ``thema_name`` (Notion-Rollup "Grafana_Name") gruppiert, damit im Dashboard
+    der Titel des Themas statt einer Page-ID erscheint. Hat eine Stunde mehrere
+    Themennamen, zaehlt sie fuer jeden Namen einzeln (jeder Name erhaelt die
+    Teilnehmerzahl dieser Stunde).
+
+    Fallback-Reihenfolge, wenn ``thema_name`` leer ist:
+
+    * ``thema_relation`` (Liste von Page-IDs einer Themen-DB) - dann dient die
+      Page-ID als Schluessel.
+    * sonst das Textfeld ``titel`` der Gruppenstunde.
 
     Rueckgabe: Liste flacher dicts
-    {thema_key, thema_quelle ('relation'|'titel'), anzahl_stunden,
+    {thema_key, thema_quelle ('name'|'relation'|'titel'), anzahl_stunden,
      schnitt_anwesend}, absteigend nach Durchschnitt.
     """
     summe: Dict[Any, int] = {}
@@ -519,17 +588,25 @@ def thema_ranking(gruppenstunden: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     for s in gruppenstunden or []:
         anwesend = len(_teilnehmer_ids(s))
+        namen = _thema_namen(s)
         relationen = [r for r in _as_list(s.get("thema_relation")) if isinstance(r, str) and r]
-        if relationen:
+        if namen:
+            # Normalfall: lesbarer Name aus dem Rollup "Grafana_Name".
+            for key in namen:
+                summe[key] = summe.get(key, 0) + anwesend
+                count[key] = count.get(key, 0) + 1
+                quelle[key] = "name"
+        elif relationen:
             for key in relationen:
                 summe[key] = summe.get(key, 0) + anwesend
                 count[key] = count.get(key, 0) + 1
-                quelle[key] = "relation"
+                # Nur setzen, wenn noch nicht per Name belegt.
+                quelle.setdefault(key, "relation")
         else:
             titel = s.get("titel") or "(ohne Thema)"
             summe[titel] = summe.get(titel, 0) + anwesend
             count[titel] = count.get(titel, 0) + 1
-            # Nur setzen, wenn noch nicht per Relation belegt.
+            # Nur setzen, wenn noch nicht per Name/Relation belegt.
             quelle.setdefault(titel, "titel")
 
     zeilen = [
@@ -735,17 +812,22 @@ def analyze(data: Dict[str, Any], cfg: Any = None) -> Dict[str, Any]:
 
     ``data`` ist der fetch_all-Output (oder ein geladenes JSON) mit den
     Schluesseln mitglieder/gruppenstunden/lager. ``cfg`` ist optional das
-    Config-Objekt; es wird ``cfg.analysis.only_active_members`` und
-    ``cfg.analysis.bundesland`` genutzt. Ohne cfg gelten die Defaults
-    (only_active_members=False, bundesland="").
+    Config-Objekt; es wird ``cfg.analysis.bundesland`` genutzt. Ohne cfg gilt
+    der Default (bundesland="").
 
-    Wirkung von only_active_members: Ist es True, werden ausgeschiedene
-    Mitglieder aus den MITGLIEDERBEZOGENEN Auswertungen ausgenommen
+    Mitglieder-Filter fuer die Statistik: Alle MITGLIEDERBEZOGENEN Auswertungen
     (Top/Flop-Anwesenheit, faire Beteiligung, Risiko-Score, Lager-Korrelation,
-    Puenktlichkeit). Die STUNDENBASIERTEN Auswertungen (Saisonalitaet,
-    Thema-Ranking) bleiben unberuehrt, da sie nicht pro Mitglied rechnen. Die
-    Gesamtkennzahlen weisen aktive und gesamte Mitgliederzahl ohnehin getrennt
-    aus und bleiben daher ebenfalls auf der vollen Mitgliederbasis.
+    Puenktlichkeit) rechnen auf der per ``mitglieder_fuer_statistik`` gefilterten
+    Liste. Dieser Filter entfernt ausgeschiedene Mitglieder IMMER und
+    beschraenkt zusaetzlich auf Mitglieder mit Bereich/Stamm="Gruppenstunde"
+    (mit defensivem Fallback, siehe mitglieder_fuer_statistik). Die frueher
+    optionale ``only_active_members``-Einstellung wird dadurch abgeloest: der
+    ausgeschieden-Filter greift jetzt generell.
+
+    Die STUNDENBASIERTEN Auswertungen (Saisonalitaet, Thema-Ranking) bleiben
+    unberuehrt, da sie nicht pro Mitglied rechnen. Die Gesamtkennzahlen weisen
+    aktive und gesamte Mitgliederzahl ohnehin getrennt aus und bleiben daher
+    auf der vollen Mitgliederbasis.
 
     Rueckgabe: ein flaches, JSON-serialisierbares Report-dict.
     """
@@ -753,20 +835,18 @@ def analyze(data: Dict[str, Any], cfg: Any = None) -> Dict[str, Any]:
     gruppenstunden = data.get("gruppenstunden") or []
     lager = data.get("lager") or []
 
-    only_active = False
     bundesland = ""
     if cfg is not None and getattr(cfg, "analysis", None) is not None:
-        only_active = bool(getattr(cfg.analysis, "only_active_members", False))
         bundesland = getattr(cfg.analysis, "bundesland", "") or ""
 
-    mitglieder_ausw = _aktive_mitglieder(mitglieder, only_active)
+    mitglieder_ausw = mitglieder_fuer_statistik(mitglieder)
 
     return {
         "_meta": {
             "anzahl_mitglieder": len(mitglieder),
+            "anzahl_mitglieder_statistik": len(mitglieder_ausw),
             "anzahl_gruppenstunden": len(gruppenstunden),
             "anzahl_lager": len(lager),
-            "only_active_members": only_active,
             "bundesland": bundesland,
         },
         "top_flop_anwesenheit": top_flop_anwesenheit(mitglieder_ausw, gruppenstunden),
