@@ -129,8 +129,60 @@ def _default_config_dict() -> Dict[str, Any]:
     }
 
 
+def _apply_postgres_env_overrides(raw: Dict[str, Any]) -> None:
+    """PostgreSQL-Einstellungen optional aus Umgebungsvariablen übernehmen.
+
+    Hintergrund: In der TrueNAS-App-Variante wird die config.yaml beim ersten
+    Start aus der Vorlage erzeugt (mit ``enabled: false``). Wird die App neu
+    angelegt, ginge eine manuelle Änderung in der config.yaml verloren. Damit
+    die Datenbank-Anbindung ohne Shell und dauerhaft gesetzt werden kann, haben
+    diese Umgebungsvariablen Vorrang vor der config.yaml:
+
+        PG_ENABLED   (true/false/1/0/yes/no)
+        PG_HOST
+        PG_PORT      (Zahl)
+        PG_DATABASE
+        PG_USER
+        PG_SCHEMA
+
+    Ist eine Variable nicht gesetzt, bleibt der Wert aus der config.yaml
+    erhalten (abwärtskompatibel). Das Passwort kommt weiterhin ausschließlich
+    aus PG_PASSWORD (siehe Config.pg_password).
+    """
+    pg = raw.setdefault("postgres", {})
+
+    enabled = os.environ.get("PG_ENABLED")
+    if enabled is not None and enabled != "":
+        pg["enabled"] = enabled.strip().lower() in ("1", "true", "yes", "ja", "on")
+
+    for env_name, key in (
+        ("PG_HOST", "host"),
+        ("PG_DATABASE", "database"),
+        ("PG_USER", "user"),
+        ("PG_SCHEMA", "schema"),
+    ):
+        wert = os.environ.get(env_name)
+        if wert:
+            pg[key] = wert
+
+    port = os.environ.get("PG_PORT")
+    if port:
+        try:
+            pg["port"] = int(port)
+        except ValueError:
+            print(
+                f"WARNUNG: PG_PORT='{port}' ist keine gültige Zahl und wird "
+                "ignoriert.",
+                flush=True,
+            )
+
+
 def load_config(path: Path = CONFIG_PATH, load_env: bool = True) -> Config:
-    """config.yaml + .env laden. Fehlt die YAML, wird eine leere Struktur genutzt."""
+    """config.yaml + .env laden. Fehlt die YAML, wird eine leere Struktur genutzt.
+
+    PostgreSQL-Werte können zusätzlich über Umgebungsvariablen gesetzt werden
+    (PG_ENABLED/PG_HOST/…); diese haben Vorrang vor der config.yaml.
+    """
     if load_env and ENV_PATH.exists():
         load_dotenv(ENV_PATH)
 
@@ -138,6 +190,8 @@ def load_config(path: Path = CONFIG_PATH, load_env: bool = True) -> Config:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     else:
         raw = _default_config_dict()
+
+    _apply_postgres_env_overrides(raw)
 
     return Config.model_validate(raw)
 
