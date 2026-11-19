@@ -1,0 +1,88 @@
+# =============================================================================
+# Vereinsstatistik — Konfiguration
+# =============================================================================
+# Diese Datei NACH config.yaml kopieren und ausfüllen. Sie kann komplett über
+# die Web-UI gepflegt werden, oder direkt hier (praktisch auf TrueNAS).
+#
+# Der Notion-Token steht NICHT hier, sondern in der .env-Datei (NOTION_TOKEN=...)
+# oder als Umgebungsvariable. So landet das Secret nicht in der Konfig/im Repo.
+# =============================================================================
+
+notion:
+  # Notion-API-Version. 2025-09-03 führte "Data Sources" ein. Neuere Versionen
+  # sind abwärtskompatibel. Leer lassen = Standard des Tools.
+  api_version: "2025-09-03"
+
+# -----------------------------------------------------------------------------
+# Die drei Datenbanken. Du gibst entweder die database_id ODER data_source_id an.
+#   - database_id:    bevorzugt. Das Tool löst die Data Source(s) automatisch auf.
+#   - data_source_id: optional, falls eine DB mehrere Data Sources hat und du
+#                     eine bestimmte willst.
+#
+# Die "field"-Abschnitte ordnen interne Namen -> echte Notion-Property-Namen zu.
+# Benennst du in Notion eine Spalte um, änderst du NUR hier den Wert rechts —
+# der Code bleibt unberührt. Genau das war der Wunsch zum "Austauschen".
+# -----------------------------------------------------------------------------
+
+databases:
+
+  mitglieder:
+    database_id: ""          # z. B. "1a2b3c4d..." (die ID aus der Notion-URL)
+    data_source_id: ""       # optional
+    fields:
+      name: "Name"                       # Title-Property
+      spitzname: "Spitznamen"            # schönerer Anzeigename (optional)
+      eintrittsdatum: "Eintrittsdatum"   # Date  -> Basis der relativen Beteiligung
+      austrittsdatum: "Austrittsdatum"   # Date  (optional)
+      ausgeschieden: "Ausgeschieden"     # Checkbox -> aktiv/inaktiv
+      geburtsdatum: "Geburtsdatum"       # Date  (optional, für Altersauswertung)
+      geschlecht: "Geschlecht"           # Select (optional, Segmentierung)
+      sippe: "Sippen"                    # Relation/Select (optional, Segmentierung)
+      stufe: "Jung/Pfadfinder"           # Select (optional, Info)
+
+  gruppenstunden:
+    database_id: ""
+    data_source_id: ""
+    fields:
+      titel: "Hauptthema"                       # Title der Gruppenstunde
+      datum: "Datum"                            # Date
+      teilnehmer: "Sippeneinteilung"            # Relation -> anwesende Mitglieder
+      thema_relation: "Gruppenstunden Themen Datenbank"  # Relation -> Themen-Kategorie
+      zu_spaet: "Zu spät!"                       # (optional) wer kam zu spät
+      jahr: "Jahr Zahl"                          # (optional) Rollup/Zahl
+
+  lager:
+    database_id: ""
+    data_source_id: ""
+    fields:
+      name: "Name"                        # Title des Lagers
+      datum: "Datum"                       # Date (Beginn / Zeitraum)
+      teilnehmer: "Teilnehmer"             # Relation -> Teilnehmer
+      teilnehmeranzahl: "Teilnehmeranzahl" # (optional) Rollup/Zahl
+      hat_stattgefunden: "Event hat statgefunden"  # (optional) Checkbox/Formula
+      standort: "Standort"                 # (optional)
+      motto: "Motto"                       # (optional)
+
+# -----------------------------------------------------------------------------
+# Auswertungs-Einstellungen
+# -----------------------------------------------------------------------------
+analysis:
+  # Nur Mitglieder berücksichtigen, die nicht ausgeschieden sind?
+  # (Für historische Jahresauswertungen oft trotzdem alle gewünscht.)
+  only_active_members: false
+
+  # Deutsche Schulferien je Bundesland für die Ferien-/Saisonauswertung.
+  # Kann leer bleiben; dann wird Ferien-Korrelation übersprungen.
+  bundesland: ""   # z. B. "BW", "BY", "NW" ...
+
+# -----------------------------------------------------------------------------
+# PostgreSQL (erst ab Phase 3 relevant — für Grafana auf TrueNAS)
+# -----------------------------------------------------------------------------
+postgres:
+  enabled: false
+  host: "localhost"
+  port: 5432
+  database: "vereinsstatistik"
+  user: "verein"
+  # Passwort kommt aus .env (PG_PASSWORD=...), nicht hierher.
+  schema: "public"

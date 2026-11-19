@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vereinsstatistik — Konfiguration</title>
+  <style>
+    :root {
+      --bg: #0f1115; --card: #181b21; --line: #2a2f3a; --fg: #e6e8ec;
+      --muted: #9aa3b2; --accent: #4f8cff; --ok: #38b000; --err: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg);
+           color: var(--fg); line-height: 1.5; }
+    header { padding: 24px 20px; border-bottom: 1px solid var(--line); }
+    header h1 { margin: 0; font-size: 20px; }
+    header p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+    main { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .card { background: var(--card); border: 1px solid var(--line);
+            border-radius: 12px; padding: 20px; margin-bottom: 18px; }
+    .card h2 { margin: 0 0 4px; font-size: 16px; }
+    .card .hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+    input[type=text], input[type=password], select {
+      width: 100%; padding: 9px 10px; background: #0d0f13; color: var(--fg);
+      border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+    button { background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+             padding: 9px 16px; font-size: 14px; cursor: pointer; }
+    button.secondary { background: #2a2f3a; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .status { font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .status.ok { color: var(--ok); } .status.err { color: var(--err); }
+    .db-block { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+    .db-block:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+    .fields-grid { display: grid; grid-template-columns: 180px 1fr; gap: 6px 12px;
+                   align-items: center; margin-top: 8px; }
+    .fields-grid .k { font-size: 13px; color: var(--muted); }
+    .map-ok { color: var(--ok); } .map-miss { color: var(--err); }
+    .map-opt { color: var(--muted); }
+    code { background:#0d0f13; padding:1px 5px; border-radius:4px; font-size:12px; }
+    .tag { font-size:11px; color:var(--muted); border:1px solid var(--line);
+           border-radius:999px; padding:1px 8px; }
+    ul.props { columns: 2; font-size: 13px; color: var(--muted); margin: 6px 0 0;
+               padding-left: 18px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vereinsstatistik — Konfiguration</h1>
+    <p>Notion verbinden, Datenbanken zuordnen, Felder mappen. Alles wird in
+       <code>config.yaml</code> gespeichert; der Token landet in <code>.env</code>.</p>
+  </header>
+
+  <main>
+    <!-- 1. Token ------------------------------------------------------------>
+    <section class="card">
+      <h2>1. Notion-Token</h2>
+      <p class="hint">
+        Erstelle eine Integration unter
+        <code>notion.so/my-integrations</code>, teile deine 3 Datenbanken mit ihr
+        (••• → Connections) und trage den Token hier ein.
+        {% if has_token %}<span class="tag">Token ist gesetzt</span>{% endif %}
+      </p>
+      <label for="token">Integration-Token (<code>ntn_…</code> / <code>secret_…</code>)</label>
+      <div class="row">
+        <input type="password" id="token" placeholder="{% if has_token %}•••••••• (gesetzt — nur ändern bei Bedarf){% else %}Token einfügen{% endif %}" style="flex:1" />
+        <button onclick="saveToken()">Token speichern</button>
+        <button class="secondary" onclick="testConn()">Verbindung testen</button>
+      </div>
+      <div id="token-status" class="status"></div>
+    </section>
+
+    <!-- 2. Datenbanken ------------------------------------------------------>
+    <section class="card">
+      <h2>2. Datenbanken zuordnen</h2>
+      <p class="hint">Wähle für jede Rolle die passende Notion-Datenbank
+         (Liste nach „Verbindung testen"). Alternativ IDs direkt eintragen.</p>
+
+      {% for key in ["mitglieder", "gruppenstunden", "lager"] %}
+      {% set db = cfg.databases.get(key) %}
+      <div class="db-block" data-db="{{ key }}">
+        <strong>{{ key }}</strong>
+        <label>Datenbank auswählen</label>
+        <select class="db-select" data-db="{{ key }}">
+          <option value="">— nach „Verbindung testen" wählbar —</option>
+        </select>
+        <label>oder database_id direkt</label>
+        <input type="text" class="db-id" data-db="{{ key }}"
+               value="{{ db.database_id if db else '' }}" placeholder="database_id" />
+      </div>
+      {% endfor %}
+
+      <div class="row" style="margin-top:16px">
+        <button onclick="runInspect()">Struktur & Mapping prüfen</button>
+      </div>
+      <div id="inspect-status" class="status"></div>
+    </section>
+
+    <!-- 3. Feld-Mapping ----------------------------------------------------->
+    <section class="card">
+      <h2>3. Feld-Zuordnung</h2>
+      <p class="hint">Interner Name → Notion-Property. Benennst du in Notion um,
+         passt du hier nur den rechten Wert an. ✓ = Property existiert,
+         ✗ = nicht gefunden, · = optional/leer.</p>
+      <div id="mapping-area">
+        {% for key, db in cfg.databases.items() %}
+        <div class="db-block">
+          <strong>{{ key }}</strong>
+          <div class="fields-grid" data-fields="{{ key }}">
+            {% for internal, notion in db.fields.items() %}
+            <div class="k">{{ internal }}</div>
+            <input type="text" data-db="{{ key }}" data-field="{{ internal }}"
+                   value="{{ notion }}" />
+            {% endfor %}
+            {% if not db.fields %}
+            <div class="k" style="grid-column:1/3; color:var(--muted)">
+              Noch kein Mapping. Beispiel-Mapping aus <code>config.example.yaml</code>
+              übernehmen oder Felder nach dem Inspect manuell eintragen.
+            </div>
+            {% endif %}
+          </div>
+          <ul class="props" data-props="{{ key }}"></ul>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 4. Speichern -------------------------------------------------------->
+    <section class="card">
+      <h2>4. Speichern</h2>
+      <div class="row">
+        <button onclick="saveConfig()">Konfiguration speichern</button>
+      </div>
+      <div id="save-status" class="status"></div>
+    </section>
+  </main>
+
+  <script>
+    let lastDatabases = [];
+
+    function setStatus(id, msg, ok) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.className = "status " + (ok === true ? "ok" : ok === false ? "err" : "");
+    }
+
+    async function saveToken() {
+      const token = document.getElementById("token").value.trim();
+      if (!token) { setStatus("token-status", "Bitte Token eingeben.", false); return; }
+      const fd = new FormData(); fd.append("token", token);
+      const r = await fetch("/api/token", { method: "POST", body: fd });
+      const j = await r.json();
+      setStatus("token-status", j.ok ? "Token gespeichert." : j.error, j.ok);
+    }
+
+    async function testConn() {
+      setStatus("token-status", "Teste Verbindung …");
+      const r = await fetch("/api/test");
+      const j = await r.json();
+      if (!j.ok) { setStatus("token-status", j.error, false); return; }
+      lastDatabases = j.databases;
+      fillDbSelects();
+      setStatus("token-status",
+        `Verbindung OK — ${j.databases.length} Datenbank(en) sichtbar.`, true);
+    }
+
+    function fillDbSelects() {
+      document.querySelectorAll(".db-select").forEach(sel => {
+        const current = document.querySelector(
+          `.db-id[data-db="${sel.dataset.db}"]`).value;
+        sel.innerHTML = '<option value="">— wählen —</option>';
+        lastDatabases.forEach(db => {
+          const o = document.createElement("option");
+          // Bei Data-Source-Objekten die übergeordnete database_id bevorzugen.
+          o.value = db.database_id || db.id;
+          o.textContent = db.title;
+          if (o.value === current) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.onchange = () => {
+          document.querySelector(`.db-id[data-db="${sel.dataset.db}"]`).value = sel.value;
+        };
+      });
+    }
+
+    async function runInspect() {
+      // Erst aktuelle IDs speichern, damit der Inspect sie nutzt.
+      await saveConfig(true);
+      setStatus("inspect-status", "Inspiziere …");
+      const r = await fetch("/api/inspect");
+      const j = await r.json();
+      if (!j.ok) { setStatus("inspect-status", j.error, false); return; }
+      renderInspect(j.report);
+      setStatus("inspect-status", "Fertig. Mapping unten geprüft.", true);
+    }
+
+    function renderInspect(report) {
+      for (const [key, entry] of Object.entries(report.databases)) {
+        const propsEl = document.querySelector(`ul.props[data-props="${key}"]`);
+        if (propsEl) propsEl.innerHTML = "";
+        if (!entry.configured) continue;
+        if (entry.error) {
+          if (propsEl) propsEl.innerHTML = `<li class="map-miss">${entry.error}</li>`;
+          continue;
+        }
+        const ds = entry.data_source;
+        if (propsEl && ds) {
+          ds.fields.forEach(f => {
+            const li = document.createElement("li");
+            li.textContent = `${f.name} (${f.type})`;
+            propsEl.appendChild(li);
+          });
+        }
+        (entry.mapping || []).forEach(m => {
+          const inp = document.querySelector(
+            `input[data-db="${key}"][data-field="${m.internal}"]`);
+          if (!inp) return;
+          inp.style.borderColor = m.optional ? "#2a2f3a"
+            : m.exists ? "#38b000" : "#ef4444";
+        });
+      }
+    }
+
+    function collectConfig() {
+      const databases = {};
+      ["mitglieder", "gruppenstunden", "lager"].forEach(key => {
+        const id = document.querySelector(`.db-id[data-db="${key}"]`);
+        const fields = {};
+        document.querySelectorAll(`input[data-db="${key}"][data-field]`)
+          .forEach(inp => { fields[inp.dataset.field] = inp.value.trim(); });
+        databases[key] = { database_id: id ? id.value.trim() : "", fields };
+      });
+      return { databases };
+    }
+
+    async function saveConfig(silent) {
+      const body = collectConfig();
+      const r = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (!silent) setStatus("save-status",
+        j.ok ? "Konfiguration gespeichert (config.yaml)." : j.error, j.ok);
+      return j.ok;
+    }
+  </script>
+</body>
+</html>
