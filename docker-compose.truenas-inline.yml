@@ -56,6 +56,10 @@ services:
       NOTION_TOKEN: "HIER_DEIN_NOTION_TOKEN"
       # (1) DB-Passwort hier eintragen (identisch mit postgres oben):
       PG_PASSWORD: "HIER_DEIN_DB_PASSWORT"
+      # PostgreSQL dauerhaft aktivieren (Vorrang vor config.yaml). So bleibt die
+      # DB-Anbindung auch nach Neuanlage der App gesetzt - ohne Shell.
+      PG_ENABLED: "true"
+      PG_HOST: "postgres"
       VEREINSSTATISTIK_CONFIG_DIR: /app/config_dir
     volumes:
       - config-dir:/app/config_dir
@@ -75,6 +79,9 @@ services:
       NOTION_TOKEN: "HIER_DEIN_NOTION_TOKEN"
       # (1) DB-Passwort hier eintragen (identisch mit postgres oben):
       PG_PASSWORD: "HIER_DEIN_DB_PASSWORT"
+      # PostgreSQL dauerhaft aktivieren (Vorrang vor config.yaml):
+      PG_ENABLED: "true"
+      PG_HOST: "postgres"
       # Sync-Intervall in Sekunden (86400 = taeglich, 3600 = stuendlich):
       SYNC_INTERVALL_SEKUNDEN: "86400"
       VEREINSSTATISTIK_CONFIG_DIR: /app/config_dir
