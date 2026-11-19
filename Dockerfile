@@ -29,6 +29,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # gemountet (/app/config.yaml).
 WORKDIR /app
 
+# gosu fuer den privilegierten->unprivilegierten Wechsel im Entrypoint.
+# (Noetig, damit das zur Laufzeit gemountete Konfig-Volume beschreibbar wird.)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 # Abhaengigkeiten zuerst - nur requirements.txt kopieren, damit der pip-Layer
 # im Cache bleibt, solange sich die Abhaengigkeiten nicht aendern.
 COPY requirements.txt ./
@@ -48,13 +54,15 @@ COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 COPY grafana/ ./grafana/
 
 # Nicht-Root-Benutzer anlegen, Einstiegsskript ausfuehrbar machen und
-# Eigentum uebertragen. So laeuft der Prozess ohne Root-Rechte; das
-# /app-Verzeichnis gehoert dem Benutzer, damit das Schreiben von config.yaml
-# ueber die Web-UI (Bind-Mount) funktioniert.
+# Eigentum uebertragen. Der Container startet als root, damit das Entrypoint
+# ein zur Laufzeit gemountetes Konfig-Volume beschreibbar machen kann; danach
+# wechselt es per gosu auf appuser. So laeuft der eigentliche Prozess ohne
+# Root-Rechte, aber das Schreiben der config.yaml funktioniert auch auf einem
+# frisch gemounteten Volume (TrueNAS-App-Variante).
 RUN useradd --create-home --uid 10001 appuser \
     && chmod +x /app/docker-entrypoint.sh \
     && chown -R appuser:appuser /app
-USER appuser
+# Kein festes USER appuser mehr - der Rechte-Drop passiert im Entrypoint.
 
 # Die Web-UI lauscht auf 8000 (siehe web.main: host 0.0.0.0, port 8000).
 EXPOSE 8000

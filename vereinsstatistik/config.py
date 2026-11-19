@@ -172,8 +172,6 @@ def ensure_config_initialized(
     if config_path.exists():
         return False
 
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
     if example_path.exists():
         inhalt = example_path.read_text(encoding="utf-8")
     else:
@@ -181,7 +179,20 @@ def ensure_config_initialized(
             _default_config_dict(), sort_keys=False, allow_unicode=True
         )
 
-    config_path.write_text(inhalt, encoding="utf-8")
+    # Defensiv: Schlaegt das Anlegen fehl (z. B. nicht beschreibbares Volume),
+    # darf die Web-UI trotzdem starten. Der Fehler wird gemeldet, aber nicht
+    # weitergeworfen, damit kein Crash-/Restart-Loop entsteht; der Nutzer kann
+    # die Ursache dann ueber die laufende UI bzw. die Logs erkennen.
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(inhalt, encoding="utf-8")
+    except OSError as exc:
+        print(
+            f"WARNUNG: config.yaml konnte nicht angelegt werden ({config_path}): "
+            f"{exc}. Pruefe die Schreibrechte des Konfig-Verzeichnisses.",
+            flush=True,
+        )
+        return False
     return True
 
 
