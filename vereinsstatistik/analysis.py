@@ -159,6 +159,21 @@ def _teilnehmer_ids(datensatz: Dict[str, Any]) -> List[str]:
     return [t for t in _as_list(datensatz.get("teilnehmer")) if isinstance(t, str)]
 
 
+def _anwesenheiten_summe(
+    mitglieder: List[Dict[str, Any]], gruppenstunden: List[Dict[str, Any]]
+) -> int:
+    """Summe der Anwesenheiten der angegebenen Mitglieder ueber alle Stunden.
+
+    Zaehlt nur Anwesenheiten von Mitgliedern aus ``mitglieder`` (anhand ihrer
+    ``_id``) - fuer die ungewichtete Rohquote auf Basis der Statistik-Mitglieder.
+    """
+    ids = {m.get("_id") for m in mitglieder or []}
+    summe = 0
+    for s in gruppenstunden or []:
+        summe += sum(1 for tid in _teilnehmer_ids(s) if tid in ids)
+    return summe
+
+
 def _stunden_jahr(stunde: Dict[str, Any]) -> Optional[int]:
     """Jahr einer Gruppenstunde bestimmen (Feld 'jahr' bevorzugt, sonst Datum)."""
     jahr = stunde.get("jahr")
@@ -750,51 +765,71 @@ def gesamtkennzahlen(
     gruppenstunden: List[Dict[str, Any]],
     lager: List[Dict[str, Any]],
     stichtag: Optional[date] = None,
+    mitglieder_statistik: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Aggregierte Gesamtkennzahlen ueber alle Daten.
 
+    Zwei Mitgliederbasen werden bewusst getrennt:
+      * ``mitglieder``: ALLE Mitglieder der Datenbank - nur fuer die reinen
+        Zaehlungen (anzahl_mitglieder_gesamt / anzahl_aktive_mitglieder).
+      * ``mitglieder_statistik``: die fuer die Statistik relevante Teilmenge
+        (nicht ausgeschieden UND Bereich/Stamm="Gruppenstunde", via
+        ``mitglieder_fuer_statistik``). NUR auf dieser Basis werden die
+        Beteiligungsquoten berechnet. Ist sie nicht uebergeben, wird sie aus
+        ``mitglieder`` abgeleitet, damit die Funktion auch allein korrekt ist.
+
+    Felder:
     * anzahl_aktive_mitglieder: nicht ausgeschieden (Feld bzw. Austrittsdatum)
     * anzahl_mitglieder_gesamt: alle Mitglieder
     * anzahl_gruppenstunden / anzahl_lager
     * schnitt_anwesend_pro_stunde: Durchschnitt der len(teilnehmer) je Stunde
     * gesamtbeteiligungsquote: Durchschnitt der fairen Beteiligungsquoten
-      (Kennzahl 2) ueber alle bewertbaren Mitglieder. Diese Definition folgt
-      demselben Fairness-Prinzip wie die uebrigen mitgliederbezogenen
-      Kennzahlen: jedes Mitglied wird nur an den Stunden seines aktiven
-      Zeitraums (Eintritt bis Austritt bzw. letzte Stunde) gemessen, sodass
-      Zu- und Abgaenge die Quote nicht kuenstlich druecken. Mitglieder ohne
-      bewertbare Quote (None) fliessen nicht in den Durchschnitt ein. Gibt es
-      keine bewertbaren Mitglieder, ist die Quote 0.0.
-    * gesamtbeteiligungsquote_roh: die fruehere ungewichtete Rohquote
-      (Summe aller Anwesenheiten / (anzahl_mitglieder_gesamt *
-      anzahl_gruppenstunden) * 100). Sie ignoriert aktive Zeitraeume und wird
-      bewusst nur als ungewichtete Zusatzkennzahl mitgefuehrt.
+      (Kennzahl 2) ueber die bewertbaren STATISTIK-Mitglieder. Folgt dem
+      Fairness-Prinzip: jedes Mitglied wird nur an den Stunden seines aktiven
+      Zeitraums gemessen. Mitglieder ohne bewertbare Quote (None) fliessen
+      nicht ein. Keine bewertbaren Mitglieder -> 0.0.
+    * gesamtbeteiligungsquote_roh: ungewichtete Rohquote auf Basis der
+      STATISTIK-Mitglieder (Summe ihrer Anwesenheiten / (Anzahl Statistik-
+      Mitglieder * Anzahl Stunden) * 100). Ignoriert aktive Zeitraeume und
+      wird nur als Zusatz mitgefuehrt.
 
     Rueckgabe: flaches dict.
     """
     alle = mitglieder or []
     aktive = [m for m in alle if not ist_ausgeschieden(m, stichtag)]
 
+    # Statistik-Basis: uebergeben oder selbst ableiten.
+    statistik = (
+        mitglieder_statistik
+        if mitglieder_statistik is not None
+        else mitglieder_fuer_statistik(alle, stichtag)
+    )
+
     anzahl_stunden = len(gruppenstunden or [])
     anwesenheiten = [len(_teilnehmer_ids(s)) for s in gruppenstunden or []]
     summe_anwesend = sum(anwesenheiten)
     schnitt = round(summe_anwesend / anzahl_stunden, 2) if anzahl_stunden else 0.0
 
-    # Faire Gesamtquote: Durchschnitt der bewertbaren fairen Einzelquoten.
+    # Faire Gesamtquote: Durchschnitt der bewertbaren fairen Einzelquoten -
+    # NUR ueber die Statistik-Mitglieder (keine Vereins-Karteileichen o. Ae.).
     faire_quoten = [
         row["quote_prozent"]
-        for row in faire_beteiligung(alle, gruppenstunden)
+        for row in faire_beteiligung(statistik, gruppenstunden)
         if row["quote_prozent"] is not None
     ]
     gesamtquote = round(mean(faire_quoten), 2) if faire_quoten else 0.0
 
-    # Ungewichtete Rohquote (bewusst als Zusatz, ignoriert aktive Zeitraeume).
-    nenner = len(alle) * anzahl_stunden
-    gesamtquote_roh = round(summe_anwesend / nenner * 100, 2) if nenner else 0.0
+    # Ungewichtete Rohquote - ebenfalls nur auf Basis der Statistik-Mitglieder.
+    anwesend_statistik = _anwesenheiten_summe(statistik, gruppenstunden)
+    nenner = len(statistik) * anzahl_stunden
+    gesamtquote_roh = (
+        round(anwesend_statistik / nenner * 100, 2) if nenner else 0.0
+    )
 
     return {
         "anzahl_aktive_mitglieder": len(aktive),
         "anzahl_mitglieder_gesamt": len(alle),
+        "anzahl_mitglieder_statistik": len(statistik),
         "anzahl_gruppenstunden": anzahl_stunden,
         "anzahl_lager": len(lager or []),
         "schnitt_anwesend_pro_stunde": schnitt,
@@ -826,8 +861,10 @@ def analyze(data: Dict[str, Any], cfg: Any = None) -> Dict[str, Any]:
 
     Die STUNDENBASIERTEN Auswertungen (Saisonalitaet, Thema-Ranking) bleiben
     unberuehrt, da sie nicht pro Mitglied rechnen. Die Gesamtkennzahlen weisen
-    aktive und gesamte Mitgliederzahl ohnehin getrennt aus und bleiben daher
-    auf der vollen Mitgliederbasis.
+    die aktive und gesamte Mitgliederzahl weiterhin auf der vollen Basis aus,
+    berechnen die BETEILIGUNGSQUOTEN aber nur ueber die Statistik-Mitglieder
+    (``mitglieder_ausw``), damit Vereinsmitglieder ohne Gruppenstunden-Bezug die
+    Quote nicht verfaelschen.
 
     Rueckgabe: ein flaches, JSON-serialisierbares Report-dict.
     """
@@ -856,5 +893,7 @@ def analyze(data: Dict[str, Any], cfg: Any = None) -> Dict[str, Any]:
         "thema_ranking": thema_ranking(gruppenstunden),
         "lager_korrelation": lager_korrelation(mitglieder_ausw, gruppenstunden, lager),
         "puenktlichkeit": puenktlichkeit(mitglieder_ausw, gruppenstunden),
-        "gesamtkennzahlen": gesamtkennzahlen(mitglieder, gruppenstunden, lager),
+        "gesamtkennzahlen": gesamtkennzahlen(
+            mitglieder, gruppenstunden, lager, mitglieder_statistik=mitglieder_ausw
+        ),
     }
