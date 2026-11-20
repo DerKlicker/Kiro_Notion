@@ -1,29 +1,31 @@
 # =============================================================================
-# Vereinsstatistik - TrueNAS Custom App (Variante mit DIREKT eingetragenen
-# Secrets, OHNE ${...}-Platzhalter und OHNE .env-Datei)
+# Vereinsstatistik - TrueNAS Custom App (einmal einrichten, dann nur "Update")
 # =============================================================================
-# WARUM DIESE DATEI?
-# Die TrueNAS-Custom-App fuellt die ${...}-Compose-Platzhalter NICHT aus dem
-# "Environment"-Formular. Dadurch blieben NOTION_TOKEN und PG_PASSWORD leer,
-# PostgreSQL startete mit leerem Passwort und der Stack brach ab
-# ("container ... postgres ... is unhealthy"). Diese Variante traegt die Werte
-# direkt im YAML ein - das ist bei der Custom-App der zuverlaessige Weg.
+# EINRICHTUNG: Du musst GENAU ZWEI Werte eintragen - jeweils nur EINMAL, ganz
+# oben im Block "x-einstellungen". Der Rest zieht sich die Werte automatisch
+# ueber YAML-Anker (die *sterne unten). Danach nie wieder anfassen:
+# fuer neue Funktionen in TrueNAS einfach auf "Update" klicken.
 #
-# ----------------------------------------------------------------------------
-# DU MUSST NUR ZWEI WERTE ERSETZEN (jeweils an allen markierten Stellen):
+#   (1) HIER_DEIN_DB_PASSWORT   -> ein starkes, selbst gewaehltes Passwort.
+#                                  Keine $ " ` Zeichen verwenden.
+#   (2) HIER_DEIN_NOTION_TOKEN  -> dein Notion-Integration-Token (ntn_...).
 #
-#   1) HIER_DEIN_DB_PASSWORT   -> ein starkes, selbst gewaehltes Passwort.
-#                                 Kommt 4x vor (postgres, app, etl-cron, grafana).
-#   2) HIER_DEIN_NOTION_TOKEN  -> dein Notion-Integration-Token (ntn_...).
-#                                 Kommt 2x vor (app, etl-cron).
+# Das Image wird als :latest gezogen (pull_policy: always), d. h. beim "Update"
+# in TrueNAS kommt automatisch die neueste Version. Kein sha-Tag mehr noetig.
 #
-# Tipp: In einem Editor "Alle ersetzen" nutzen, dann erwischst du jede Stelle.
-# Das Passwort bei postgres MUSS identisch mit dem bei app/etl-cron/grafana sein.
-# ----------------------------------------------------------------------------
-# Das Image kommt aus GHCR (ghcr.io/derklicker/kiro_notion:latest) und enthaelt
-# NUR Programmcode - keine Secrets. Deine Werte bleiben in diesem YAML auf
-# deinem NAS. Siehe docs/TRUENAS-APP.md fuer die vollstaendige Anleitung.
+# Das GHCR-Image enthaelt nur Programmcode - keine Secrets. Deine Werte bleiben
+# in diesem YAML auf deinem NAS. Vollstaendige Anleitung: docs/TRUENAS-APP.md.
 # =============================================================================
+
+# ----------------------------------------------------------------------------
+# HIER die zwei Werte eintragen (je EINMAL). Sie werden unten per *Anker
+# ueberall eingesetzt - du musst sie NICHT mehrfach kopieren.
+# ----------------------------------------------------------------------------
+x-einstellungen:
+  db-passwort: &db_passwort "HIER_DEIN_DB_PASSWORT"
+  notion-token: &notion_token "HIER_DEIN_NOTION_TOKEN"
+  # Sync-Intervall in Sekunden (86400 = taeglich, 3600 = stuendlich):
+  sync-intervall: &sync_intervall "86400"
 
 services:
 
@@ -33,8 +35,7 @@ services:
     environment:
       POSTGRES_DB: vereinsstatistik
       POSTGRES_USER: verein
-      # (1) DB-Passwort hier eintragen:
-      POSTGRES_PASSWORD: "HIER_DEIN_DB_PASSWORT"
+      POSTGRES_PASSWORD: *db_passwort
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -47,17 +48,17 @@ services:
 
   app:
     image: ghcr.io/derklicker/kiro_notion:latest
+    # Beim "Update" immer das neue :latest ziehen (kein manuelles docker pull).
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      # (2) Notion-Token hier eintragen:
-      NOTION_TOKEN: "HIER_DEIN_NOTION_TOKEN"
-      # (1) DB-Passwort hier eintragen (identisch mit postgres oben):
-      PG_PASSWORD: "HIER_DEIN_DB_PASSWORT"
-      # PostgreSQL dauerhaft aktivieren (Vorrang vor config.yaml). So bleibt die
-      # DB-Anbindung auch nach Neuanlage der App gesetzt - ohne Shell.
+      NOTION_TOKEN: *notion_token
+      PG_PASSWORD: *db_passwort
+      # PostgreSQL dauerhaft aktivieren (Vorrang vor der config.yaml), damit die
+      # DB-Anbindung auch nach Neuanlage/Update gesetzt bleibt - ohne Shell.
       PG_ENABLED: "true"
       PG_HOST: "postgres"
       VEREINSSTATISTIK_CONFIG_DIR: /app/config_dir
@@ -70,20 +71,17 @@ services:
 
   etl-cron:
     image: ghcr.io/derklicker/kiro_notion:latest
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      # (2) Notion-Token hier eintragen:
-      NOTION_TOKEN: "HIER_DEIN_NOTION_TOKEN"
-      # (1) DB-Passwort hier eintragen (identisch mit postgres oben):
-      PG_PASSWORD: "HIER_DEIN_DB_PASSWORT"
-      # PostgreSQL dauerhaft aktivieren (Vorrang vor config.yaml):
+      NOTION_TOKEN: *notion_token
+      PG_PASSWORD: *db_passwort
       PG_ENABLED: "true"
       PG_HOST: "postgres"
-      # Sync-Intervall in Sekunden (86400 = taeglich, 3600 = stuendlich):
-      SYNC_INTERVALL_SEKUNDEN: "86400"
+      SYNC_INTERVALL_SEKUNDEN: *sync_intervall
       VEREINSSTATISTIK_CONFIG_DIR: /app/config_dir
     volumes:
       - config-dir:/app/config_dir:ro
@@ -100,6 +98,7 @@ services:
 
   grafana-provisioning-init:
     image: ghcr.io/derklicker/kiro_notion:latest
+    pull_policy: always
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,8 +121,7 @@ services:
       grafana-provisioning-init:
         condition: service_completed_successfully
     environment:
-      # (1) DB-Passwort hier eintragen (identisch mit postgres oben):
-      PG_PASSWORD: "HIER_DEIN_DB_PASSWORT"
+      PG_PASSWORD: *db_passwort
     volumes:
       - grafana-data:/var/lib/grafana
       - grafana-provisioning:/etc/grafana/provisioning:ro
