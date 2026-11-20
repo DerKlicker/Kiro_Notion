@@ -340,15 +340,17 @@ def test_gesamtkennzahlen():
     gk = gesamtkennzahlen(mitglieder, gruppenstunden, lager)
     assert gk["anzahl_mitglieder_gesamt"] == 3
     assert gk["anzahl_aktive_mitglieder"] == 2
+    assert gk["anzahl_mitglieder_statistik"] == 2  # m3 (ausgeschieden) faellt raus
     assert gk["anzahl_gruppenstunden"] == 2
     assert gk["anzahl_lager"] == 1
-    assert gk["schnitt_anwesend_pro_stunde"] == 1.5  # (2+1)/2
-    # Faire Gesamtquote = Durchschnitt der fairen Einzelquoten. Ohne Ein-/
-    # Austrittsdaten zaehlen fuer jedes Mitglied beide Stunden als moeglich:
-    # m1 100 %, m2 50 %, m3 0 % -> Durchschnitt 50 %.
-    assert gk["gesamtbeteiligungsquote"] == 50.0
-    # Ungewichtete Rohquote als bewusster Zusatz: 3 / (3 * 2) * 100 = 50 %.
-    assert gk["gesamtbeteiligungsquote_roh"] == 50.0
+    assert gk["schnitt_anwesend_pro_stunde"] == 1.5  # (2+1)/2 - stundenbasiert, alle
+    # Beteiligungsquoten rechnen NUR ueber die Statistik-Mitglieder (m1, m2);
+    # das ausgeschiedene m3 (0 %) drueckt die Quote nicht mehr.
+    # m1 100 %, m2 50 % -> Durchschnitt 75 %.
+    assert gk["gesamtbeteiligungsquote"] == 75.0
+    # Ungewichtete Rohquote auf Statistik-Basis: Anwesenheiten von m1,m2 = 3;
+    # Nenner 2 Mitglieder * 2 Stunden = 4 -> 3/4*100 = 75 %.
+    assert gk["gesamtbeteiligungsquote_roh"] == 75.0
 
 
 def test_gesamtbeteiligungsquote_fair_vs_roh_bei_fluktuation():
@@ -410,6 +412,38 @@ def test_analyze_filtert_ausgeschiedene_immer():
     # Stundenbasierte Saisonalitaet unberuehrt (Stunde zaehlt beide Teilnehmer).
     monate = {m["monat"]: m for m in report["saisonalitaet"]["pro_monat"]}
     assert monate[1]["summe_anwesend"] == 2
+
+
+def test_gesamtbeteiligungsquote_nur_statistik_mitglieder():
+    """Vereinsmitglieder ohne Gruppenstunden-Bezug duerfen die Quote nicht druecken.
+
+    Bildet das reale Problem ab: viele Karteileichen (Bereich/Stamm !=
+    "Gruppenstunde"), die nie an Gruppenstunden teilnehmen, zogen die
+    Gesamtbeteiligungsquote kuenstlich nach unten (~16 %). Erwartet: Die Quote
+    rechnet nur ueber die Statistik-Mitglieder (hier m1, 100 %), die Nicht-
+    Gruppenstunden-Mitglieder (m2..m5) bleiben aussen vor.
+    """
+    mitglieder = [
+        {"_id": "m1", "name": "Aktiv", "bereich_stamm": "Gruppenstunde",
+         "eintrittsdatum": "2024-01-01"},
+    ] + [
+        {"_id": f"k{i}", "name": f"Karteileiche {i}", "bereich_stamm": "Intern Stamm",
+         "eintrittsdatum": "2024-01-01"}
+        for i in range(4)
+    ]
+    gruppenstunden = [
+        {"_id": "g1", "datum": "2024-02-01", "teilnehmer": ["m1"]},
+        {"_id": "g2", "datum": "2024-03-01", "teilnehmer": ["m1"]},
+    ]
+
+    report = analyze({"mitglieder": mitglieder, "gruppenstunden": gruppenstunden, "lager": []})
+    gk = report["gesamtkennzahlen"]
+
+    # Nur m1 zaehlt zur Statistik; er war bei beiden moeglichen Stunden da -> 100 %.
+    assert gk["anzahl_mitglieder_gesamt"] == 5
+    assert gk["anzahl_mitglieder_statistik"] == 1
+    assert gk["gesamtbeteiligungsquote"] == 100.0
+    assert gk["gesamtbeteiligungsquote_roh"] == 100.0
 
 
 def test_analyze_ohne_config_serialisierbar_und_filtert():
