@@ -111,17 +111,27 @@ def _print_analyse_zusammenfassung(report) -> None:
 
     Stil konsistent mit cmd_inspect/cmd_fetch (einfache print-Ausgaben).
     """
-    gk = report["gesamtkennzahlen"]
-    print("Zusammenfassung:")
-    print(f"  Mitglieder gesamt:        {gk['anzahl_mitglieder_gesamt']}")
-    print(f"  davon aktiv:              {gk['anzahl_aktive_mitglieder']}")
-    print(f"  Gruppenstunden:           {gk['anzahl_gruppenstunden']}")
-    print(f"  Lager:                    {gk['anzahl_lager']}")
-    print(f"  Schnitt anwesend/Stunde:  {gk['schnitt_anwesend_pro_stunde']}")
-    print(f"  Gesamtbeteiligungsquote:  {gk['gesamtbeteiligungsquote']} %")
+    # Die mitgliederbezogenen Kennzahlen tragen seit der Jahres-Dimension ein
+    # Feld ``jahr`` (None = "alle Jahre"-Aggregat). Die Konsolen-Zusammenfassung
+    # zeigt bewusst das "alle Jahre"-Aggregat (jahr is None).
+    def _nur_alle_jahre(zeilen):
+        gefiltert = [z for z in zeilen or [] if z.get("jahr") is None]
+        # Fallback fuer aeltere Reports ohne Jahres-Feld: alles nehmen.
+        return gefiltert if gefiltert else list(zeilen or [])
 
-    # Top-3 und Flop-3 Anwesenheit (absteigend sortierte Liste).
-    top_flop = report.get("top_flop_anwesenheit") or []
+    gesamt_liste = report.get("gesamtkennzahlen") or []
+    gk_alle = _nur_alle_jahre(gesamt_liste)
+    gk = gk_alle[0] if gk_alle else {}
+    print("Zusammenfassung (alle Jahre):")
+    print(f"  Mitglieder gesamt:        {gk.get('anzahl_mitglieder_gesamt')}")
+    print(f"  davon aktiv:              {gk.get('anzahl_aktive_mitglieder')}")
+    print(f"  Gruppenstunden:           {gk.get('anzahl_gruppenstunden')}")
+    print(f"  Lager:                    {gk.get('anzahl_lager')}")
+    print(f"  Schnitt anwesend/Stunde:  {gk.get('schnitt_anwesend_pro_stunde')}")
+    print(f"  Gesamtbeteiligungsquote:  {gk.get('gesamtbeteiligungsquote')} %")
+
+    # Top-3 und Flop-3 Anwesenheit (absteigend sortierte Liste, alle Jahre).
+    top_flop = _nur_alle_jahre(report.get("top_flop_anwesenheit"))
     if top_flop:
         print("\nTop-3 Anwesenheit:")
         for z in top_flop[:3]:
@@ -145,9 +155,9 @@ def _print_analyse_zusammenfassung(report) -> None:
                 f"{z['stunden_seit_letzter_anwesenheit']} Stunde(n) seit letzter Anwesenheit"
             )
 
-    # Kurze Saison-Hinweise (staerkster Monat und Wochentag).
+    # Kurze Saison-Hinweise (staerkster Monat und Wochentag, alle Jahre).
     saison = report.get("saisonalitaet") or {}
-    pro_monat = saison.get("pro_monat") or []
+    pro_monat = _nur_alle_jahre(saison.get("pro_monat"))
     pro_wochentag = saison.get("pro_wochentag") or []
     if pro_monat or pro_wochentag:
         print("\nSaison-Hinweise:")
@@ -165,8 +175,8 @@ def _print_analyse_zusammenfassung(report) -> None:
                 f"(Schnitt {bester_wtag['schnitt_anwesend']} anwesend)"
             )
 
-    # Kurze Thema-Hinweise (bestes Thema nach Durchschnitt).
-    themen = report.get("thema_ranking") or []
+    # Kurze Thema-Hinweise (bestes Thema nach Durchschnitt, alle Jahre).
+    themen = _nur_alle_jahre(report.get("thema_ranking"))
     if themen:
         bestes = themen[0]
         print("\nThema-Hinweise:")

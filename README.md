@@ -133,6 +133,37 @@ hinterlegt und können dort leicht an den Verein angepasst werden:
   unberührt, und die Gesamtkennzahlen weisen aktive und gesamte Mitgliederzahl
   ohnehin getrennt aus.
 
+### Jahres-Dimension (pro Jahr auswerten)
+
+Mehrere Kennzahlen lassen sich zusätzlich **pro Kalenderjahr** auswerten, damit
+sichtbar wird, wie sich die Beteiligung von Jahr zu Jahr verändert und jedes
+Jahr jemand anderes vorne liegen kann. Betroffen sind: **Top/Flop-Anwesenheit,
+faire relative Beteiligung, Gesamtkennzahlen, Thema-Ranking** und die
+**Saisonalität pro Monat**. **Risiko/Dropout, Lager-Korrelation und
+Pünktlichkeit** bleiben bewusst "alle Zeit" (keine Jahres-Dimension).
+
+- **Jahr = Kalenderjahr ab 01.01.**, abgeleitet aus dem Feld `datum` der
+  Gruppenstunde (nicht aus dem Notion-Rollup `jahr`).
+- **Faire Jahresquote:** Die möglichen Stunden eines Mitglieds im Jahr sind die
+  Stunden dieses Jahres mit Datum **ab dem Eintrittsdatum** (und bis Austritt
+  bzw. letzter Stunde). Ein Mitglied, das mitten im Jahr eintritt, wird also
+  nur anteilig ab seinem Eintritt bewertet.
+- **Sentinel-Konvention "alle Jahre":** Der Report liefert pro Kennzahl je
+  vorkommendem Jahr einen Satz Zeilen **mit** einem Feld `jahr` **plus** einen
+  Aggregat-Satz "alle Jahre". Das Aggregat trägt `jahr = None` (Python) bzw.
+  **SQL `NULL`** in der Spalte `jahr` (die Konstante heißt `JAHR_ALLE` in
+  `analysis.py`). Das "alle Jahre"-Aggregat entspricht exakt der bisherigen
+  Gesamtauswertung, sodass nichts verloren geht.
+
+Im Grafana-Dashboard gibt es dafür die Variable **`$jahr`** (oben im Dashboard).
+Sie listet die vorkommenden Jahre plus **"Alle Jahre" (Wert `0`)**. Die
+jahresgefilterten Panels filtern mit `COALESCE(jahr, 0) = $jahr`, sodass der
+Wert `0` das Aggregat mit `jahr IS NULL` trifft. Das Saisonalitäts-Panel
+kombiniert beides in **einer** Grafik: Balken = Schnitt je Monat im gewählten
+Jahr, Linie = Gesamtschnitt je Monat über alle Jahre als Vergleich. Bei Auswahl
+"Alle Jahre" liefert die Balken-Query ebenfalls das Gesamtaggregat, Balken und
+Linie sind dann bewusst identisch.
+
 ## Phase 3 - PostgreSQL, Container und Grafana (TrueNAS)
 
 Phase 3 macht das Tool auf TrueNAS SCALE deploybar: die in Phase 2 berechneten
@@ -168,10 +199,19 @@ Persistente Volumes und Secrets (`NOTION_TOKEN`, `PG_PASSWORD`) kommen aus der
 **Grafana:** Datenquelle und Dashboards werden per Provisioning aus
 `grafana/provisioning/` automatisch geladen. Das Dashboard `Vereinsstatistik`
 zeigt Top/Flop-Anwesenheit, faire Beteiligung, Risiko-Liste, Saisonalitaet pro
-Monat und Wochentag, Thema-Ranking, Lager-Korrelation, Puenktlichkeit und
-Gesamtkennzahlen (jeweils gefiltert auf den juengsten Lauf) sowie die
-Gesamtbeteiligungsquote im Zeitverlauf. Damit decken die Panels alle acht
-Kennzahlen aus Phase 2 ab.
+Monat (gewaehltes Jahr vs. Gesamtschnitt), Thema-Ranking, Lager-Korrelation,
+Puenktlichkeit und Gesamtkennzahlen (jeweils gefiltert auf den juengsten Lauf)
+sowie die Gesamtbeteiligungsquote im Zeitverlauf. Oben im Dashboard waehlt die
+Variable `$jahr` das Kalenderjahr (oder "Alle Jahre"); siehe Abschnitt
+"Jahres-Dimension" weiter oben.
+
+**Wichtig nach dem Deploy dieser Version (neue Spalte `jahr`):** Die
+jahresbezogenen Kennzahl-Tabellen haben eine neue Spalte `jahr` bekommen. Fuehre
+nach dem Update einmal `init-db` und danach `sync` aus (bzw.
+`sync --init-db`). Das Schema ist idempotent und zieht die Spalte in
+bestehenden Datenbanken defensiv per `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+nach; ein frischer Lauf fuellt anschliessend die Jahres-Zeilen. Notion bleibt
+die Datenquelle, es gehen also keine Daten verloren.
 
 Die vollstaendige Schritt-fuer-Schritt-Anleitung steht in
 [docs/TRUENAS.md](docs/TRUENAS.md).

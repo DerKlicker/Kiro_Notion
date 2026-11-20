@@ -49,11 +49,15 @@ def test_analyze_in_schreibt_report(tmp_path, capsys):
     # Der Report enthaelt die erwarteten Kennzahlen-Schluessel.
     assert "gesamtkennzahlen" in report
     assert "top_flop_anwesenheit" in report
-    assert report["gesamtkennzahlen"]["anzahl_mitglieder_gesamt"] == 3
+    # Gesamtkennzahlen sind seit der Jahres-Dimension eine Liste; das
+    # "alle Jahre"-Aggregat (jahr is None) traegt die Vereinszahlen.
+    gk_alle = [g for g in report["gesamtkennzahlen"] if g.get("jahr") is None]
+    assert len(gk_alle) == 1
+    assert gk_alle[0]["anzahl_mitglieder_gesamt"] == 3
 
     # Eine deutsche Zusammenfassung landet auf der Konsole.
     ausgabe = capsys.readouterr().out
-    assert "Zusammenfassung:" in ausgabe
+    assert "Zusammenfassung (alle Jahre):" in ausgabe
     assert f"Gespeichert nach {report_datei}" in ausgabe
 
 
@@ -67,7 +71,7 @@ def test_analyze_in_ohne_out(tmp_path, capsys):
 
     assert rc == 0
     ausgabe = capsys.readouterr().out
-    assert "Zusammenfassung:" in ausgabe
+    assert "Zusammenfassung (alle Jahre):" in ausgabe
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +104,7 @@ def test_analyze_live_pfad_erfolg(monkeypatch, capsys):
 
     assert rc == 0
     ausgabe = capsys.readouterr().out
-    assert "Zusammenfassung:" in ausgabe
+    assert "Zusammenfassung (alle Jahre):" in ausgabe
 
 
 def test_analyze_live_pfad_notion_fehler(monkeypatch, capsys):

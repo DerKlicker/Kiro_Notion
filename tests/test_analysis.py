@@ -399,18 +399,27 @@ def test_analyze_filtert_ausgeschiedene_immer():
     }
 
     report = analyze(data)
-    ids_top = {z["mitglied_id"] for z in report["top_flop_anwesenheit"]}
-    ids_fair = {z["mitglied_id"] for z in report["faire_beteiligung"]}
+    # Mit der Jahres-Dimension tragen die Zeilen ein Feld ``jahr``; das
+    # "alle Jahre"-Aggregat (jahr is None) entspricht dem bisherigen Ergebnis.
+    top_alle = [z for z in report["top_flop_anwesenheit"] if z.get("jahr") is None]
+    fair_alle = [z for z in report["faire_beteiligung"] if z.get("jahr") is None]
+    ids_top = {z["mitglied_id"] for z in top_alle}
+    ids_fair = {z["mitglied_id"] for z in fair_alle}
     # Ausgeschiedenes m2 taucht in mitgliederbezogenen Auswertungen nicht auf.
     assert ids_top == {"m1"}
     assert ids_fair == {"m1"}
     # _meta weist die gefilterte Statistik-Basis separat aus.
     assert report["_meta"]["anzahl_mitglieder"] == 2
     assert report["_meta"]["anzahl_mitglieder_statistik"] == 1
-    # Gesamtkennzahlen bleiben auf voller Basis.
-    assert report["gesamtkennzahlen"]["anzahl_mitglieder_gesamt"] == 2
+    # Gesamtkennzahlen bleiben auf voller Basis (alle Jahre-Aggregat).
+    gk_alle = [g for g in report["gesamtkennzahlen"] if g.get("jahr") is None]
+    assert gk_alle[0]["anzahl_mitglieder_gesamt"] == 2
     # Stundenbasierte Saisonalitaet unberuehrt (Stunde zaehlt beide Teilnehmer).
-    monate = {m["monat"]: m for m in report["saisonalitaet"]["pro_monat"]}
+    monate = {
+        m["monat"]: m
+        for m in report["saisonalitaet"]["pro_monat"]
+        if m.get("jahr") is None
+    }
     assert monate[1]["summe_anwesend"] == 2
 
 
@@ -437,7 +446,8 @@ def test_gesamtbeteiligungsquote_nur_statistik_mitglieder():
     ]
 
     report = analyze({"mitglieder": mitglieder, "gruppenstunden": gruppenstunden, "lager": []})
-    gk = report["gesamtkennzahlen"]
+    gk_liste = [g for g in report["gesamtkennzahlen"] if g.get("jahr") is None]
+    gk = gk_liste[0]
 
     # Nur m1 zaehlt zur Statistik; er war bei beiden moeglichen Stunden da -> 100 %.
     assert gk["anzahl_mitglieder_gesamt"] == 5

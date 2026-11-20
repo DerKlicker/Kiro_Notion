@@ -183,6 +183,55 @@ def _stunden_jahr(stunde: Dict[str, Any]) -> Optional[int]:
     return d.year if d else None
 
 
+# Sentinel fuer die Jahres-Dimension: ``jahr=None`` bedeutet "alle Jahre"
+# (das Aggregat ueber die gesamte Laufzeit). Jede Kennzahl mit Jahres-Dimension
+# liefert pro vorkommendem Kalenderjahr einen Satz Zeilen MIT dem jeweiligen
+# Jahr als ``jahr``-Feld PLUS einen Aggregat-Satz mit ``jahr=None``. In der
+# Datenbank wird dieser Sentinel als SQL NULL in der Spalte ``jahr`` abgebildet.
+# Diese Konvention ist ueber Analyse, Sync, Schema und Dashboard konsistent.
+JAHR_ALLE: Optional[int] = None
+
+
+def _stunden_kalenderjahr(stunde: Dict[str, Any]) -> Optional[int]:
+    """Kalenderjahr einer Gruppenstunde strikt aus dem ``datum`` ableiten.
+
+    Fuer die Jahres-Dimension wird bewusst NICHT das Rollup-Feld ``jahr``
+    genutzt, sondern das Kalenderjahr (ab 01.01.) aus dem Datum - so entspricht
+    die Zuordnung dem fachlichen Wunsch "Jahr = Kalenderjahr, Beginn 01.01.".
+    Fehlt oder ist das Datum ungueltig, wird ``None`` zurueckgegeben.
+    """
+    d = parse_date(stunde.get("datum"))
+    return d.year if d else None
+
+
+def vorkommende_jahre(gruppenstunden: List[Dict[str, Any]]) -> List[int]:
+    """Sortierte Liste der Kalenderjahre, in denen Gruppenstunden liegen.
+
+    Grundlage ist das Kalenderjahr aus dem ``datum`` jeder Gruppenstunde
+    (siehe ``_stunden_kalenderjahr``). Stunden ohne gueltiges Datum werden
+    ignoriert. Aufsteigend sortiert, jedes Jahr nur einmal.
+    """
+    jahre = {
+        j
+        for j in (_stunden_kalenderjahr(s) for s in gruppenstunden or [])
+        if j is not None
+    }
+    return sorted(jahre)
+
+
+def _stunden_im_jahr(
+    gruppenstunden: List[Dict[str, Any]], jahr: Optional[int]
+) -> List[Dict[str, Any]]:
+    """Gruppenstunden auf ein Kalenderjahr einschraenken.
+
+    Bei ``jahr=JAHR_ALLE`` (None) werden alle Stunden zurueckgegeben, sonst nur
+    die Stunden des angegebenen Kalenderjahres.
+    """
+    if jahr is None:
+        return list(gruppenstunden or [])
+    return [s for s in gruppenstunden or [] if _stunden_kalenderjahr(s) == jahr]
+
+
 # Wert, den das Feld ``bereich_stamm`` (Notion-Select "Bereich/Stamm") haben
 # muss, damit ein Mitglied in die Gruppenstunden-Statistik einfliesst. Andere
 # Werte (z. B. "Intern Stamm") oder leere Werte schliessen das Mitglied aus.
@@ -260,16 +309,15 @@ def top_flop_anwesenheit(
 ) -> List[Dict[str, Any]]:
     """Absolute Anzahl Gruppenstunden-Teilnahmen pro Mitglied mit Rang.
 
-    Optional nach ``jahr`` filterbar (Jahr des Datums bzw. Feld 'jahr'). Der Rang
+    Optional nach ``jahr`` filterbar (Kalenderjahr aus dem ``datum``, ab 01.01.;
+    ``jahr=None`` zaehlt alle Jahre). Der Rang
     ist ein dichter Rang (dense rank): gleiche Anwesenheit -> gleicher Rang, der
     naechste Rang folgt lueckenlos. Hoechste Anwesenheit = Rang 1.
 
     Rueckgabe: Liste flacher dicts
     {mitglied_id, name, anwesend_absolut, rang}, absteigend nach Anwesenheit.
     """
-    stunden = gruppenstunden or []
-    if jahr is not None:
-        stunden = [s for s in stunden if _stunden_jahr(s) == jahr]
+    stunden = _stunden_im_jahr(gruppenstunden, jahr)
 
     zaehler: Dict[str, int] = {m.get("_id"): 0 for m in mitglieder or [] if m.get("_id")}
     for s in stunden:
@@ -330,12 +378,21 @@ def _moegliche_stunden_fuer(
 def faire_beteiligung(
     mitglieder: List[Dict[str, Any]],
     gruppenstunden: List[Dict[str, Any]],
+    jahr: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Faire relative Beteiligungsquote pro Mitglied.
 
     Pro Mitglied werden nur die Gruppenstunden gezaehlt, deren Datum im aktiven
     Zeitraum des Mitglieds liegt (Eintritt bis Austritt bzw. letzte Stunde).
     Quote = anwesend_im_zeitraum / moegliche_stunden_im_zeitraum * 100.
+
+    Optional nach ``jahr`` (Kalenderjahr aus dem ``datum``, ab 01.01.) gefiltert.
+    Bei gesetztem Jahr werden ausschliesslich die Stunden dieses Jahres
+    betrachtet; die moeglichen Stunden eines Mitglieds sind dann die Stunden des
+    Jahres mit Datum >= Eintrittsdatum (und <= Austritt bzw. letzter Stunde des
+    Jahres). So wird ein Mitglied, das mitten im Jahr eintritt, nur anteilig ab
+    seinem Eintritt bewertet. ``jahr=None`` (JAHR_ALLE) rechnet ueber alle Jahre
+    und entspricht damit dem bisherigen Gesamtergebnis.
 
     Umgang mit 0 moeglichen Stunden: Die Quote ist dann ``None`` (nicht 0.0),
     weil ein Mitglied ohne moegliche Stunden fachlich nicht bewertbar ist und
@@ -344,6 +401,7 @@ def faire_beteiligung(
     Rueckgabe: Liste flacher dicts
     {mitglied_id, name, moegliche_stunden, anwesend, quote_prozent}.
     """
+    gruppenstunden = _stunden_im_jahr(gruppenstunden, jahr)
     stunden_mit_datum = [
         (s, parse_date(s.get("datum"))) for s in gruppenstunden or []
     ]
@@ -505,11 +563,15 @@ def risiko_score(
 def saisonalitaet(
     gruppenstunden: List[Dict[str, Any]],
     bundesland: str = "",
+    jahr: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Besucherzahlen pro Monat (1-12).
 
     Je Gruppenstunde zaehlt die Anzahl der Teilnehmer (len(teilnehmer)).
     Aggregiert wird nach Monat des Datums.
+
+    Optional nach ``jahr`` (Kalenderjahr aus dem ``datum``, ab 01.01.) gefiltert.
+    ``jahr=None`` (JAHR_ALLE) aggregiert ueber alle Jahre.
 
     Eine Auswertung pro Wochentag gibt es bewusst NICHT (mehr): Gruppenstunden
     finden immer samstags statt, nur das Sommerlager faellt auf andere Tage -
@@ -525,6 +587,7 @@ def saisonalitaet(
     {pro_monat: [{monat, anzahl_stunden, summe_anwesend, schnitt_anwesend}],
      ferien_korrelation: None}
     """
+    gruppenstunden = _stunden_im_jahr(gruppenstunden, jahr)
     monat_summe: Dict[int, int] = {}
     monat_count: Dict[int, int] = {}
 
@@ -578,8 +641,14 @@ def _thema_namen(stunde: Dict[str, Any]) -> List[str]:
     return namen
 
 
-def thema_ranking(gruppenstunden: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def thema_ranking(
+    gruppenstunden: List[Dict[str, Any]],
+    jahr: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     """Durchschnittliche Anwesenheit pro Thema.
+
+    Optional nach ``jahr`` (Kalenderjahr aus dem ``datum``, ab 01.01.) gefiltert;
+    ``jahr=None`` (JAHR_ALLE) rechnet ueber alle Jahre.
 
     Primaer wird nach dem lesbaren Themennamen aus dem Rollup-Feld
     ``thema_name`` (Notion-Rollup "Grafana_Name") gruppiert, damit im Dashboard
@@ -597,6 +666,7 @@ def thema_ranking(gruppenstunden: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     {thema_key, thema_quelle ('name'|'relation'|'titel'), anzahl_stunden,
      schnitt_anwesend}, absteigend nach Durchschnitt.
     """
+    gruppenstunden = _stunden_im_jahr(gruppenstunden, jahr)
     summe: Dict[Any, int] = {}
     count: Dict[Any, int] = {}
     quelle: Dict[Any, str] = {}
@@ -766,8 +836,19 @@ def gesamtkennzahlen(
     lager: List[Dict[str, Any]],
     stichtag: Optional[date] = None,
     mitglieder_statistik: Optional[List[Dict[str, Any]]] = None,
+    jahr: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Aggregierte Gesamtkennzahlen ueber alle Daten.
+
+    Optional nach ``jahr`` (Kalenderjahr aus dem ``datum``, ab 01.01.) gefiltert.
+    Bei gesetztem Jahr beziehen sich alle STUNDEN- und QUOTEN-bezogenen Felder
+    (anzahl_gruppenstunden, schnitt_anwesend_pro_stunde, gesamtbeteiligungsquote,
+    gesamtbeteiligungsquote_roh) nur auf die Stunden dieses Jahres; die
+    faire Quote misst jedes Mitglied anteilig ab seinem Eintritt im Jahr. Die
+    reinen MITGLIEDER-Zaehlungen (anzahl_aktive_mitglieder,
+    anzahl_mitglieder_gesamt, anzahl_mitglieder_statistik) bleiben die
+    vereinsweite Basis zum Stichtag und sind nicht jahresabhaengig.
+    ``jahr=None`` (JAHR_ALLE) entspricht dem bisherigen Gesamtergebnis.
 
     Zwei Mitgliederbasen werden bewusst getrennt:
       * ``mitglieder``: ALLE Mitglieder der Datenbank - nur fuer die reinen
@@ -805,6 +886,9 @@ def gesamtkennzahlen(
         else mitglieder_fuer_statistik(alle, stichtag)
     )
 
+    # Stundenbezogene Felder auf das gewaehlte Jahr beschraenken (None = alle).
+    gruppenstunden = _stunden_im_jahr(gruppenstunden, jahr)
+
     anzahl_stunden = len(gruppenstunden or [])
     anwesenheiten = [len(_teilnehmer_ids(s)) for s in gruppenstunden or []]
     summe_anwesend = sum(anwesenheiten)
@@ -812,6 +896,7 @@ def gesamtkennzahlen(
 
     # Faire Gesamtquote: Durchschnitt der bewertbaren fairen Einzelquoten -
     # NUR ueber die Statistik-Mitglieder (keine Vereins-Karteileichen o. Ae.).
+    # Die Jahresfilterung ist bereits in ``gruppenstunden`` erfolgt.
     faire_quoten = [
         row["quote_prozent"]
         for row in faire_beteiligung(statistik, gruppenstunden)
@@ -826,12 +911,15 @@ def gesamtkennzahlen(
         round(anwesend_statistik / nenner * 100, 2) if nenner else 0.0
     )
 
+    # Lager ebenfalls auf das gewaehlte Jahr beschraenken (Kalenderjahr aus datum).
+    lager_im_jahr = _stunden_im_jahr(lager, jahr)
+
     return {
         "anzahl_aktive_mitglieder": len(aktive),
         "anzahl_mitglieder_gesamt": len(alle),
         "anzahl_mitglieder_statistik": len(statistik),
         "anzahl_gruppenstunden": anzahl_stunden,
-        "anzahl_lager": len(lager or []),
+        "anzahl_lager": len(lager_im_jahr or []),
         "schnitt_anwesend_pro_stunde": schnitt,
         "gesamtbeteiligungsquote": gesamtquote,
         "gesamtbeteiligungsquote_roh": gesamtquote_roh,
@@ -878,6 +966,65 @@ def analyze(data: Dict[str, Any], cfg: Any = None) -> Dict[str, Any]:
 
     mitglieder_ausw = mitglieder_fuer_statistik(mitglieder)
 
+    # Jahres-Dimension: fuer die betroffenen Kennzahlen je vorkommendem
+    # Kalenderjahr ein Satz Zeilen plus das Aggregat "alle Jahre". Das Aggregat
+    # traegt den Sentinel ``JAHR_ALLE`` (jahr=None); die einzelnen Jahre tragen
+    # ihre Jahreszahl im Feld ``jahr``. Reihenfolge der Zeilen: zuerst das
+    # Aggregat (jahr=None), danach die Jahre aufsteigend. Diese Konvention ist
+    # mit Sync/Schema/Dashboard abgestimmt (NULL = alle Jahre in der DB).
+    jahre = vorkommende_jahre(gruppenstunden)
+
+    def _mit_jahr(zeilen: List[Dict[str, Any]], jahr: Optional[int]) -> List[Dict[str, Any]]:
+        """Jeder Zeile das Feld ``jahr`` hinzufuegen (Kopie, Original bleibt)."""
+        return [dict(z, jahr=jahr) for z in zeilen]
+
+    top_flop_dim: List[Dict[str, Any]] = _mit_jahr(
+        top_flop_anwesenheit(mitglieder_ausw, gruppenstunden, jahr=JAHR_ALLE), JAHR_ALLE
+    )
+    faire_dim: List[Dict[str, Any]] = _mit_jahr(
+        faire_beteiligung(mitglieder_ausw, gruppenstunden, jahr=JAHR_ALLE), JAHR_ALLE
+    )
+    thema_dim: List[Dict[str, Any]] = _mit_jahr(
+        thema_ranking(gruppenstunden, jahr=JAHR_ALLE), JAHR_ALLE
+    )
+    saison_dim: List[Dict[str, Any]] = _mit_jahr(
+        saisonalitaet(gruppenstunden, bundesland, jahr=JAHR_ALLE)["pro_monat"], JAHR_ALLE
+    )
+    gesamt_dim: List[Dict[str, Any]] = [
+        dict(
+            gesamtkennzahlen(
+                mitglieder, gruppenstunden, lager,
+                mitglieder_statistik=mitglieder_ausw, jahr=JAHR_ALLE,
+            ),
+            jahr=JAHR_ALLE,
+        )
+    ]
+
+    for j in jahre:
+        top_flop_dim += _mit_jahr(
+            top_flop_anwesenheit(mitglieder_ausw, gruppenstunden, jahr=j), j
+        )
+        faire_dim += _mit_jahr(
+            faire_beteiligung(mitglieder_ausw, gruppenstunden, jahr=j), j
+        )
+        thema_dim += _mit_jahr(thema_ranking(gruppenstunden, jahr=j), j)
+        saison_dim += _mit_jahr(
+            saisonalitaet(gruppenstunden, bundesland, jahr=j)["pro_monat"], j
+        )
+        gesamt_dim.append(
+            dict(
+                gesamtkennzahlen(
+                    mitglieder, gruppenstunden, lager,
+                    mitglieder_statistik=mitglieder_ausw, jahr=j,
+                ),
+                jahr=j,
+            )
+        )
+
+    # "alle Jahre"-Aggregat der Saisonalitaet separat bereitstellen - das
+    # Dashboard nutzt es als Referenzlinie (Gesamtschnitt je Monat).
+    saison_alle = saisonalitaet(gruppenstunden, bundesland, jahr=JAHR_ALLE)
+
     return {
         "_meta": {
             "anzahl_mitglieder": len(mitglieder),
@@ -885,15 +1032,20 @@ def analyze(data: Dict[str, Any], cfg: Any = None) -> Dict[str, Any]:
             "anzahl_gruppenstunden": len(gruppenstunden),
             "anzahl_lager": len(lager),
             "bundesland": bundesland,
+            "jahre": jahre,
         },
-        "top_flop_anwesenheit": top_flop_anwesenheit(mitglieder_ausw, gruppenstunden),
-        "faire_beteiligung": faire_beteiligung(mitglieder_ausw, gruppenstunden),
+        # Kennzahlen MIT Jahres-Dimension (jede Zeile traegt ein Feld ``jahr``;
+        # jahr=None = "alle Jahre"-Aggregat, sonst das konkrete Kalenderjahr).
+        "top_flop_anwesenheit": top_flop_dim,
+        "faire_beteiligung": faire_dim,
+        "thema_ranking": thema_dim,
+        "saisonalitaet": {
+            "pro_monat": saison_dim,
+            "ferien_korrelation": saison_alle["ferien_korrelation"],
+        },
+        "gesamtkennzahlen": gesamt_dim,
+        # Kennzahlen OHNE Jahres-Dimension (bewusst "alle Zeit").
         "risiko_score": risiko_score(mitglieder_ausw, gruppenstunden),
-        "saisonalitaet": saisonalitaet(gruppenstunden, bundesland),
-        "thema_ranking": thema_ranking(gruppenstunden),
         "lager_korrelation": lager_korrelation(mitglieder_ausw, gruppenstunden, lager),
         "puenktlichkeit": puenktlichkeit(mitglieder_ausw, gruppenstunden),
-        "gesamtkennzahlen": gesamtkennzahlen(
-            mitglieder, gruppenstunden, lager, mitglieder_statistik=mitglieder_ausw
-        ),
     }
