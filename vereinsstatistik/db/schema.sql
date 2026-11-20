@@ -26,9 +26,18 @@ CREATE TABLE IF NOT EXISTS {schema}.laeufe (
     anzahl_lager          INTEGER
 );
 
+-- Jahres-Dimension (Sentinel-Konvention):
+-- Mehrere Kennzahl-Tabellen tragen eine Spalte "jahr" (INTEGER NULL). Sie haelt
+-- das Kalenderjahr (ab 01.01.), auf das sich die Zeile bezieht. Der Wert NULL
+-- ist der Sentinel fuer "alle Jahre" (das Aggregat ueber die gesamte Laufzeit).
+-- Pro Lauf gibt es je Kennzahl also einen Satz Zeilen je vorkommendem Jahr
+-- PLUS einen Aggregat-Satz mit jahr = NULL. Die ALTER-TABLE-Zeilen weiter unten
+-- ergaenzen die Spalte defensiv auch in bestehenden (alten) Datenbanken.
+
 -- Kennzahl 1: Top/Flop-Anwesenheit (absolute Teilnahmen je Mitglied).
 CREATE TABLE IF NOT EXISTS {schema}.kennzahl_top_flop_anwesenheit (
     run_id            BIGINT NOT NULL REFERENCES {schema}.laeufe (run_id) ON DELETE CASCADE,
+    jahr              INTEGER,
     mitglied_id       TEXT,
     name              TEXT,
     anwesend_absolut  INTEGER,
@@ -40,6 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_top_flop_run ON {schema}.kennzahl_top_flop_anwese
 -- (Mitglied ohne moegliche Stunden ist nicht bewertbar).
 CREATE TABLE IF NOT EXISTS {schema}.kennzahl_faire_beteiligung (
     run_id            BIGINT NOT NULL REFERENCES {schema}.laeufe (run_id) ON DELETE CASCADE,
+    jahr              INTEGER,
     mitglied_id       TEXT,
     name              TEXT,
     moegliche_stunden INTEGER,
@@ -63,9 +73,10 @@ CREATE TABLE IF NOT EXISTS {schema}.kennzahl_risiko (
 );
 CREATE INDEX IF NOT EXISTS idx_risiko_run ON {schema}.kennzahl_risiko (run_id);
 
--- Kennzahl 4a: Saisonalitaet pro Monat (1-12).
+-- Kennzahl 4a: Saisonalitaet pro Monat (1-12), je Jahr und als "alle Jahre".
 CREATE TABLE IF NOT EXISTS {schema}.kennzahl_saisonalitaet_monat (
     run_id          BIGINT NOT NULL REFERENCES {schema}.laeufe (run_id) ON DELETE CASCADE,
+    jahr            INTEGER,
     monat           INTEGER,
     anzahl_stunden  INTEGER,
     summe_anwesend  INTEGER,
@@ -82,6 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_saison_monat_run ON {schema}.kennzahl_saisonalita
 -- thema_quelle haelt die Herkunft fest ('name' | 'relation' | 'titel').
 CREATE TABLE IF NOT EXISTS {schema}.kennzahl_thema_ranking (
     run_id          BIGINT NOT NULL REFERENCES {schema}.laeufe (run_id) ON DELETE CASCADE,
+    jahr            INTEGER,
     thema_key       TEXT,
     thema_quelle    TEXT,
     anzahl_stunden  INTEGER,
@@ -113,9 +125,10 @@ CREATE TABLE IF NOT EXISTS {schema}.kennzahl_puenktlichkeit (
 );
 CREATE INDEX IF NOT EXISTS idx_puenktlichkeit_run ON {schema}.kennzahl_puenktlichkeit (run_id);
 
--- Kennzahl 8: Gesamtkennzahlen (eine Zeile je Lauf).
+-- Kennzahl 8: Gesamtkennzahlen (je Jahr eine Zeile plus "alle Jahre"-Aggregat).
 CREATE TABLE IF NOT EXISTS {schema}.kennzahl_gesamt (
     run_id                        BIGINT NOT NULL REFERENCES {schema}.laeufe (run_id) ON DELETE CASCADE,
+    jahr                          INTEGER,
     anzahl_aktive_mitglieder      INTEGER,
     anzahl_mitglieder_gesamt      INTEGER,
     anzahl_gruppenstunden         INTEGER,
@@ -125,3 +138,13 @@ CREATE TABLE IF NOT EXISTS {schema}.kennzahl_gesamt (
     gesamtbeteiligungsquote_roh   NUMERIC
 );
 CREATE INDEX IF NOT EXISTS idx_gesamt_run ON {schema}.kennzahl_gesamt (run_id);
+
+-- Defensive Migration bestehender Datenbanken: die neue Spalte "jahr" wird mit
+-- ADD COLUMN IF NOT EXISTS nachgezogen, damit ein erneutes init-db auf einer
+-- aelteren DB (ohne die Spalte) nicht bricht. Auf einer frisch angelegten DB
+-- sind diese Anweisungen No-ops (Spalte existiert bereits aus dem CREATE oben).
+ALTER TABLE {schema}.kennzahl_top_flop_anwesenheit ADD COLUMN IF NOT EXISTS jahr INTEGER;
+ALTER TABLE {schema}.kennzahl_faire_beteiligung    ADD COLUMN IF NOT EXISTS jahr INTEGER;
+ALTER TABLE {schema}.kennzahl_saisonalitaet_monat  ADD COLUMN IF NOT EXISTS jahr INTEGER;
+ALTER TABLE {schema}.kennzahl_thema_ranking        ADD COLUMN IF NOT EXISTS jahr INTEGER;
+ALTER TABLE {schema}.kennzahl_gesamt               ADD COLUMN IF NOT EXISTS jahr INTEGER;

@@ -167,14 +167,21 @@ def test_write_report_kennzahl_zeilenzahlen_und_null(report):
     conn = FakeConnection()
     sync.write_report(report, FakeConfig(), conn=conn)
 
-    # Top/Flop: eine Zeile je Mitglied (3).
+    # Top/Flop: mit Jahres-Dimension je Mitglied ein Satz "alle Jahre" (jahr
+    # NULL) plus ein Satz je vorkommendem Jahr. Die synthetischen Stunden liegen
+    # alle in 2024 -> ein Jahr. Also 3 Mitglieder * (1 Aggregat + 1 Jahr) = 6.
+    # Zeilen-Tupel: (run_id, jahr, mitglied_id, name, anwesend_absolut, rang).
     tf = _calls_fuer_tabelle(conn.calls, "kennzahl_top_flop_anwesenheit")
     assert len(tf) == 1 and tf[0][0] == "executemany"
-    assert len(tf[0][2]) == 3
+    assert len(tf[0][2]) == 6
+    tf_jahre = {zeile[1] for zeile in tf[0][2]}
+    assert tf_jahre == {None, 2024}
 
-    # Faire Beteiligung: 3 Zeilen, m3 hat quote_prozent None.
+    # Faire Beteiligung: ebenfalls 6 Zeilen (3 Mitglieder * 2 Jahres-Saetze);
+    # m3 (Eintritt 2030) hat quote_prozent None. Tupel:
+    # (run_id, jahr, mitglied_id, name, moegliche_stunden, anwesend, quote).
     fb = _calls_fuer_tabelle(conn.calls, "kennzahl_faire_beteiligung")
-    assert len(fb[0][2]) == 3
+    assert len(fb[0][2]) == 6
     quoten = [zeile[-1] for zeile in fb[0][2]]
     assert None in quoten  # NULL-Fall vorhanden
 
@@ -192,9 +199,13 @@ def test_write_report_kennzahl_zeilenzahlen_und_null(report):
     gruppen = {z[1] for z in lk[0][2]}
     assert gruppen == {"lagerteilnehmer", "nicht_teilnehmer"}
 
-    # Gesamt: genau eine Zeile (execute, kein executemany).
+    # Gesamt: mit Jahres-Dimension ein executemany mit "alle Jahre" (jahr NULL)
+    # plus einer Zeile je Jahr (hier nur 2024) -> 2 Zeilen.
     ge = _calls_fuer_tabelle(conn.calls, "kennzahl_gesamt")
-    assert len(ge) == 1 and ge[0][0] == "execute"
+    assert len(ge) == 1 and ge[0][0] == "executemany"
+    assert len(ge[0][2]) == 2
+    ge_jahre = {zeile[1] for zeile in ge[0][2]}
+    assert ge_jahre == {None, 2024}
 
     # Puenktlichkeit: nicht verfuegbar -> eine Zeile mit verfuegbar False.
     pk = _calls_fuer_tabelle(conn.calls, "kennzahl_puenktlichkeit")
@@ -231,6 +242,36 @@ def test_write_report_keine_wochentag_tabelle(report):
     assert any("kennzahl_saisonalitaet_monat" in c[1] for c in conn.calls)
 
 
+def test_write_report_jahres_dimension_spalte():
+    # Stunden ueber zwei Jahre -> je Kennzahl mit Jahres-Dimension ein
+    # "alle Jahre"-Satz (jahr NULL) plus je Jahr ein Satz. Die Spalte 'jahr'
+    # muss korrekt gesetzt und im INSERT enthalten sein.
+    daten = {
+        "mitglieder": [
+            {"_id": "m1", "name": "Anna", "bereich_stamm": "Gruppenstunde", "eintrittsdatum": "2023-01-01"},
+        ],
+        "gruppenstunden": [
+            {"_id": "g1", "datum": "2023-01-07", "titel": "Spiele", "teilnehmer": ["m1"]},
+            {"_id": "g2", "datum": "2024-01-06", "titel": "Spiele", "teilnehmer": ["m1"]},
+        ],
+        "lager": [],
+    }
+    conn = FakeConnection()
+    sync.write_report(analyze(daten, cfg=None), FakeConfig(), conn=conn)
+
+    # Saisonalitaet: INSERT enthaelt die Spalte 'jahr', Werte decken None, 2023, 2024 ab.
+    sa = _calls_fuer_tabelle(conn.calls, "kennzahl_saisonalitaet_monat")
+    assert len(sa) == 1 and "jahr" in sa[0][1]
+    # Tupel: (run_id, jahr, monat, anzahl_stunden, summe_anwesend, schnitt_anwesend).
+    sa_jahre = {zeile[1] for zeile in sa[0][2]}
+    assert sa_jahre == {None, 2023, 2024}
+
+    # Gesamt: je Jahr plus Aggregat.
+    ge = _calls_fuer_tabelle(conn.calls, "kennzahl_gesamt")
+    ge_jahre = {zeile[1] for zeile in ge[0][2]}
+    assert ge_jahre == {None, 2023, 2024}
+
+
 def test_write_report_thema_ranking_mit_lesbarem_namen():
     # Thema-Ranking mit Rollup-Name "Grafana_Name" (Feld thema_name): der
     # lesbare Name landet als thema_key, die Quelle ist 'name'.
@@ -246,10 +287,14 @@ def test_write_report_thema_ranking_mit_lesbarem_namen():
 
     tr = _calls_fuer_tabelle(conn.calls, "kennzahl_thema_ranking")
     assert len(tr) == 1 and tr[0][0] == "executemany"
-    # Zeile: (run_id, thema_key, thema_quelle, anzahl_stunden, schnitt_anwesend).
-    zeile = tr[0][2][0]
-    assert zeile[1] == "Lagerfeuer"
-    assert zeile[2] == "name"
+    # Zeile (mit Jahres-Dimension): (run_id, jahr, thema_key, thema_quelle,
+    # anzahl_stunden, schnitt_anwesend). Die "alle Jahre"-Zeile (jahr NULL)
+    # traegt denselben lesbaren Namen.
+    alle = [z for z in tr[0][2] if z[1] is None]
+    assert len(alle) == 1
+    zeile = alle[0]
+    assert zeile[2] == "Lagerfeuer"
+    assert zeile[3] == "name"
 
 
 # ---------------------------------------------------------------------------

@@ -185,23 +185,26 @@ def _schreibe_lauf(cur, schema: str, report: Dict[str, Any]) -> int:
 
 def _schreibe_kennzahlen(cur, schema: str, run_id: int, report: Dict[str, Any]) -> None:
     """Alle Kennzahl-Zeilen mit der gegebenen run_id einfuegen."""
-    # Kennzahl 1: Top/Flop-Anwesenheit.
+    # Kennzahl 1: Top/Flop-Anwesenheit (mit Jahres-Dimension; jahr=None schreibt
+    # SQL NULL = "alle Jahre"-Aggregat, sonst das konkrete Kalenderjahr).
     zeilen = [
-        (run_id, z.get("mitglied_id"), z.get("name"), z.get("anwesend_absolut"), z.get("rang"))
+        (run_id, z.get("jahr"), z.get("mitglied_id"), z.get("name"), z.get("anwesend_absolut"), z.get("rang"))
         for z in report.get("top_flop_anwesenheit") or []
     ]
     if zeilen:
         cur.executemany(
             f"INSERT INTO {_q(schema, 'kennzahl_top_flop_anwesenheit')} "
-            "(run_id, mitglied_id, name, anwesend_absolut, rang) "
-            "VALUES (%s, %s, %s, %s, %s)",
+            "(run_id, jahr, mitglied_id, name, anwesend_absolut, rang) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             zeilen,
         )
 
-    # Kennzahl 2: Faire Beteiligung (quote_prozent kann None sein).
+    # Kennzahl 2: Faire Beteiligung (quote_prozent kann None sein; mit
+    # Jahres-Dimension, jahr=None = "alle Jahre").
     zeilen = [
         (
             run_id,
+            z.get("jahr"),
             z.get("mitglied_id"),
             z.get("name"),
             z.get("moegliche_stunden"),
@@ -213,8 +216,8 @@ def _schreibe_kennzahlen(cur, schema: str, run_id: int, report: Dict[str, Any]) 
     if zeilen:
         cur.executemany(
             f"INSERT INTO {_q(schema, 'kennzahl_faire_beteiligung')} "
-            "(run_id, mitglied_id, name, moegliche_stunden, anwesend, quote_prozent) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
+            "(run_id, jahr, mitglied_id, name, moegliche_stunden, anwesend, quote_prozent) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
             zeilen,
         )
 
@@ -247,14 +250,14 @@ def _schreibe_kennzahlen(cur, schema: str, run_id: int, report: Dict[str, Any]) 
     # noch pro_monat geschrieben.
     saison = report.get("saisonalitaet") or {}
     zeilen = [
-        (run_id, z.get("monat"), z.get("anzahl_stunden"), z.get("summe_anwesend"), z.get("schnitt_anwesend"))
+        (run_id, z.get("jahr"), z.get("monat"), z.get("anzahl_stunden"), z.get("summe_anwesend"), z.get("schnitt_anwesend"))
         for z in saison.get("pro_monat") or []
     ]
     if zeilen:
         cur.executemany(
             f"INSERT INTO {_q(schema, 'kennzahl_saisonalitaet_monat')} "
-            "(run_id, monat, anzahl_stunden, summe_anwesend, schnitt_anwesend) "
-            "VALUES (%s, %s, %s, %s, %s)",
+            "(run_id, jahr, monat, anzahl_stunden, summe_anwesend, schnitt_anwesend) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             zeilen,
         )
 
@@ -262,14 +265,14 @@ def _schreibe_kennzahlen(cur, schema: str, run_id: int, report: Dict[str, Any]) 
     # Themennamen aus dem Rollup "Grafana_Name"; thema_quelle dokumentiert die
     # Herkunft: 'name' | 'relation' | 'titel').
     zeilen = [
-        (run_id, z.get("thema_key"), z.get("thema_quelle"), z.get("anzahl_stunden"), z.get("schnitt_anwesend"))
+        (run_id, z.get("jahr"), z.get("thema_key"), z.get("thema_quelle"), z.get("anzahl_stunden"), z.get("schnitt_anwesend"))
         for z in report.get("thema_ranking") or []
     ]
     if zeilen:
         cur.executemany(
             f"INSERT INTO {_q(schema, 'kennzahl_thema_ranking')} "
-            "(run_id, thema_key, thema_quelle, anzahl_stunden, schnitt_anwesend) "
-            "VALUES (%s, %s, %s, %s, %s)",
+            "(run_id, jahr, thema_key, thema_quelle, anzahl_stunden, schnitt_anwesend) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             zeilen,
         )
 
@@ -308,22 +311,32 @@ def _schreibe_kennzahlen(cur, schema: str, run_id: int, report: Dict[str, Any]) 
         zeilen,
     )
 
-    # Kennzahl 8: Gesamtkennzahlen (eine Zeile je Lauf).
-    gesamt = report.get("gesamtkennzahlen") or {}
-    cur.execute(
-        f"INSERT INTO {_q(schema, 'kennzahl_gesamt')} "
-        "(run_id, anzahl_aktive_mitglieder, anzahl_mitglieder_gesamt, "
-        "anzahl_gruppenstunden, anzahl_lager, schnitt_anwesend_pro_stunde, "
-        "gesamtbeteiligungsquote, gesamtbeteiligungsquote_roh) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+    # Kennzahl 8: Gesamtkennzahlen (je Jahr eine Zeile plus "alle Jahre"-Aggregat
+    # mit jahr=None). Seit der Jahres-Dimension ist dies eine Liste von dicts.
+    gesamt_liste = report.get("gesamtkennzahlen")
+    if isinstance(gesamt_liste, dict):
+        # Ruecksicht auf aeltere Report-Form (ein einzelnes dict ohne Jahr).
+        gesamt_liste = [dict(gesamt_liste, jahr=gesamt_liste.get("jahr"))]
+    zeilen = [
         (
             run_id,
-            gesamt.get("anzahl_aktive_mitglieder"),
-            gesamt.get("anzahl_mitglieder_gesamt"),
-            gesamt.get("anzahl_gruppenstunden"),
-            gesamt.get("anzahl_lager"),
-            gesamt.get("schnitt_anwesend_pro_stunde"),
-            gesamt.get("gesamtbeteiligungsquote"),
-            gesamt.get("gesamtbeteiligungsquote_roh"),
-        ),
-    )
+            g.get("jahr"),
+            g.get("anzahl_aktive_mitglieder"),
+            g.get("anzahl_mitglieder_gesamt"),
+            g.get("anzahl_gruppenstunden"),
+            g.get("anzahl_lager"),
+            g.get("schnitt_anwesend_pro_stunde"),
+            g.get("gesamtbeteiligungsquote"),
+            g.get("gesamtbeteiligungsquote_roh"),
+        )
+        for g in gesamt_liste or []
+    ]
+    if zeilen:
+        cur.executemany(
+            f"INSERT INTO {_q(schema, 'kennzahl_gesamt')} "
+            "(run_id, jahr, anzahl_aktive_mitglieder, anzahl_mitglieder_gesamt, "
+            "anzahl_gruppenstunden, anzahl_lager, schnitt_anwesend_pro_stunde, "
+            "gesamtbeteiligungsquote, gesamtbeteiligungsquote_roh) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            zeilen,
+        )
