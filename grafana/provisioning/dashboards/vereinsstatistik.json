@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "description": "Vereinsstatistik - alle acht Kennzahlen aus dem juengsten Analyse-Lauf (Notion -> PostgreSQL). Alle Panels filtern auf den aktuellsten run_id via max(run_id) aus public.laeufe. Die Panel-SQL nutzt fest das Schema 'public.'; bei abweichendem postgres.schema in der config.yaml das SQL in den Panels entsprechend anpassen (siehe docs/TRUENAS.md Abschnitt 7).",
+  "description": "Vereinsstatistik - alle Kennzahlen aus dem juengsten Analyse-Lauf (Notion -> PostgreSQL). Alle Panels filtern auf den aktuellsten run_id via max(run_id) aus public.laeufe. Mit der Variable $jahr (oben) laesst sich ein Kalenderjahr waehlen; 'Alle Jahre' (Wert 0) zeigt das Aggregat ueber die gesamte Laufzeit (in der DB die Zeile mit jahr IS NULL). Die jahresgefilterten Panels nutzen COALESCE(jahr, 0) = $jahr. Risiko, Lager-Korrelation und Puenktlichkeit haben bewusst keine Jahres-Dimension (immer 'alle Zeit'). Die Panel-SQL nutzt fest das Schema 'public.'; bei abweichendem postgres.schema in der config.yaml das SQL in den Panels entsprechend anpassen (siehe docs/TRUENAS.md Abschnitt 7).",
   "links": [],
   "liveNow": false,
   "panels": [
@@ -87,7 +87,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT anzahl_aktive_mitglieder AS \"Aktive Mitglieder\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe);",
+          "rawSql": "SELECT anzahl_aktive_mitglieder AS \"Aktive Mitglieder\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND COALESCE(jahr, 0) = $jahr;",
           "refId": "A"
         }
       ],
@@ -146,7 +146,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT anzahl_gruppenstunden AS \"Gruppenstunden\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe);",
+          "rawSql": "SELECT anzahl_gruppenstunden AS \"Gruppenstunden\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND COALESCE(jahr, 0) = $jahr;",
           "refId": "A"
         }
       ],
@@ -205,7 +205,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT anzahl_lager AS \"Lager\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe);",
+          "rawSql": "SELECT anzahl_lager AS \"Lager\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND COALESCE(jahr, 0) = $jahr;",
           "refId": "A"
         }
       ],
@@ -273,7 +273,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT gesamtbeteiligungsquote AS \"Gesamtbeteiligungsquote\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe);",
+          "rawSql": "SELECT gesamtbeteiligungsquote AS \"Gesamtbeteiligungsquote\" FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND COALESCE(jahr, 0) = $jahr;",
           "refId": "A"
         }
       ],
@@ -334,7 +334,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT to_char(l.erstellt_am, 'DD.MM.YYYY HH24:MI') AS \"Lauf\", g.gesamtbeteiligungsquote AS \"Faire Beteiligung (%)\" FROM public.kennzahl_gesamt g JOIN public.laeufe l ON l.run_id = g.run_id ORDER BY l.erstellt_am DESC LIMIT 30;",
+          "rawSql": "SELECT to_char(l.erstellt_am, 'DD.MM.YYYY HH24:MI') AS \"Lauf\", g.gesamtbeteiligungsquote AS \"Faire Beteiligung (%)\" FROM public.kennzahl_gesamt g JOIN public.laeufe l ON l.run_id = g.run_id WHERE g.jahr IS NULL ORDER BY l.erstellt_am DESC LIMIT 30;",
           "refId": "A"
         }
       ],
@@ -405,7 +405,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT name AS \"Mitglied\", anwesend_absolut AS \"Anwesend (absolut)\" FROM public.kennzahl_top_flop_anwesenheit WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY rang ASC, anwesend_absolut DESC;",
+          "rawSql": "SELECT name AS \"Mitglied\", anwesend_absolut AS \"Anwesend (absolut)\" FROM public.kennzahl_top_flop_anwesenheit WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND COALESCE(jahr, 0) = $jahr ORDER BY rang ASC, anwesend_absolut DESC;",
           "refId": "A"
         }
       ],
@@ -479,7 +479,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT name AS \"Mitglied\", moegliche_stunden AS \"Moegliche Stunden\", anwesend AS \"Anwesend\", quote_prozent AS \"Faire Quote (%)\" FROM public.kennzahl_faire_beteiligung WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY quote_prozent DESC NULLS LAST;",
+          "rawSql": "SELECT name AS \"Mitglied\", moegliche_stunden AS \"Moegliche Stunden\", anwesend AS \"Anwesend\", quote_prozent AS \"Faire Quote (%)\" FROM public.kennzahl_faire_beteiligung WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND COALESCE(jahr, 0) = $jahr ORDER BY quote_prozent DESC NULLS LAST;",
           "refId": "A"
         }
       ],
@@ -606,18 +606,50 @@
         "type": "postgres",
         "uid": "vereinsstatistik-postgres"
       },
+      "description": "Balken = Schnitt anwesend je Monat im gewaehlten Jahr ($jahr). Linie = Schnitt anwesend je Monat ueber ALLE Jahre (Gesamtschnitt, jahr IS NULL) als Vergleich. Bei Auswahl 'Alle Jahre' (Wert 0) liefert die Balken-Query ebenfalls das Gesamtaggregat, sodass Balken und Linie bewusst identisch sind.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "axisLabel": "",
-            "fillOpacity": 80,
-            "lineWidth": 1
+            "axisLabel": "Schnitt anwesend",
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "auto"
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gesamtschnitt (alle Jahre)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 9,
@@ -627,21 +659,16 @@
       },
       "id": 9,
       "options": {
-        "barRadius": 0,
-        "barWidth": 0.8,
         "legend": {
           "calcs": [],
           "displayMode": "list",
           "placement": "bottom",
-          "showLegend": false
+          "showLegend": true
         },
-        "orientation": "auto",
-        "showValue": "auto",
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none"
-        },
-        "xTickLabelRotation": 0
+        }
       },
       "pluginVersion": "11.2.0",
       "targets": [
@@ -652,12 +679,22 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT monat::text AS \"Monat\", schnitt_anwesend AS \"Schnitt anwesend\" FROM public.kennzahl_saisonalitaet_monat WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY monat ASC;",
+          "rawSql": "SELECT monat AS \"Monat\", schnitt_anwesend AS \"Gewaehltes Jahr\" FROM public.kennzahl_saisonalitaet_monat WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND COALESCE(jahr, 0) = $jahr ORDER BY monat ASC;",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "vereinsstatistik-postgres"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT monat AS \"Monat\", schnitt_anwesend AS \"Gesamtschnitt (alle Jahre)\" FROM public.kennzahl_saisonalitaet_monat WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND jahr IS NULL ORDER BY monat ASC;",
+          "refId": "B"
         }
       ],
-      "title": "Saisonalitaet pro Monat (Schnitt anwesend)",
-      "type": "barchart"
+      "title": "Saisonalitaet pro Monat (gewaehltes Jahr vs. Gesamtschnitt)",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -719,7 +756,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT thema_key AS \"Thema\", thema_quelle AS \"Quelle\", anzahl_stunden AS \"Anzahl Stunden\", schnitt_anwesend AS \"Schnitt anwesend\" FROM public.kennzahl_thema_ranking WHERE run_id = (SELECT max(run_id) FROM public.laeufe) ORDER BY schnitt_anwesend DESC NULLS LAST;",
+          "rawSql": "SELECT thema_key AS \"Thema\", thema_quelle AS \"Quelle\", anzahl_stunden AS \"Anzahl Stunden\", schnitt_anwesend AS \"Schnitt anwesend\" FROM public.kennzahl_thema_ranking WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND COALESCE(jahr, 0) = $jahr ORDER BY schnitt_anwesend DESC NULLS LAST;",
           "refId": "A"
         }
       ],
@@ -883,7 +920,30 @@
     "vereinsstatistik"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "jahr",
+        "label": "Jahr",
+        "description": "Kalenderjahr-Filter. 'Alle Jahre' (Wert 0) zeigt das Aggregat ueber die gesamte Laufzeit; in der Datenbank ist das Aggregat die Zeile mit jahr IS NULL (Sentinel), daher COALESCE(jahr, 0) = $jahr in der Panel-SQL.",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "vereinsstatistik-postgres"
+        },
+        "query": "SELECT __text, __value FROM (SELECT 'Alle Jahre' AS __text, 0 AS __value UNION ALL SELECT DISTINCT jahr::text AS __text, jahr AS __value FROM public.kennzahl_gesamt WHERE run_id = (SELECT max(run_id) FROM public.laeufe) AND jahr IS NOT NULL) q ORDER BY __value DESC;",
+        "refresh": 2,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "Alle Jahre",
+          "value": "0"
+        },
+        "options": [],
+        "regex": "",
+        "hide": 0
+      }
+    ]
   },
   "time": {
     "from": "now-5y",
