@@ -80,13 +80,19 @@ Konfiguration Neustarts und App-Updates überstehen. Namen sind Beispiele:
 
    **Deshalb für die Custom App die Datei
    [`docker-compose.truenas-inline.yml`](../docker-compose.truenas-inline.yml)
-   verwenden** statt `docker-compose.truenas.yml`. Dort trägst du die Werte
-   direkt ins YAML ein (zwei Platzhalter, per „Alle ersetzen"):
+   verwenden** statt `docker-compose.truenas.yml`. Dort trägst du oben im Block
+   `x-einstellungen` **genau zwei Werte je einmal** ein (sie werden per
+   YAML-Anker überall eingesetzt — kein mehrfaches Kopieren mehr):
    - `HIER_DEIN_DB_PASSWORT` → ein starkes, selbst gewähltes PostgreSQL-Passwort
-     (an allen Stellen identisch).
+     (keine `$ " ` `-Zeichen).
    - `HIER_DEIN_NOTION_TOKEN` → dein Notion-Integration-Token.
-   - Das Sync-Intervall steht direkt im YAML (`SYNC_INTERVALL_SEKUNDEN`,
-     Standard `86400` = täglich; `3600` = stündlich).
+   - Das Sync-Intervall (`sync-intervall`, Standard `86400` = täglich) steht
+     ebenfalls dort.
+
+   Das Image wird als `:latest` mit `pull_policy: always` gezogen. Für neue
+   Funktionen genügt künftig ein Klick auf **„Update"** in TrueNAS — kein
+   sha-Tag, keine YAML-Änderung. `PG_ENABLED`/`PG_HOST` sind bereits gesetzt,
+   sodass PostgreSQL ohne weiteren Eingriff aktiv ist.
 
    Die Datei `docker-compose.truenas.yml` mit `${...}` bleibt für Umgebungen,
    die eine echte `.env` bereitstellen (z. B. der Shell-Weg in
